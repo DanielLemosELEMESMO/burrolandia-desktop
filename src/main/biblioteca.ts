@@ -3,7 +3,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join, resolve, sep } from 'node:path'
 import { ErroEpub, lerEpub } from '@nucleo/epub/ler'
 import { converterPdfEmEpub, type OpcoesDeConversao, type ResultadoConversao } from '@nucleo/pdf/converter'
@@ -26,6 +26,8 @@ export const MENSAGENS_DE_ERRO: Record<CodigoErroImportacao, string> = {
   drm: 'Este livro está protegido pela loja onde foi comprado (DRM) e só abre no app dela.',
   'arquivo-inacessivel': 'Não encontrei o arquivo. Ele pode ter sido movido ou apagado.',
   'protegido-por-senha': 'Este PDF está protegido por senha. Abra-o no programa onde ele foi criado, salve sem senha e tente de novo.',
+  'conversao-interrompida':
+    'A adaptação deste PDF não terminou: ele pode ser grande ou complexo demais para esta versão. Tente de novo; se continuar, me conte qual arquivo foi.',
 }
 
 const erro = (codigo: CodigoErroImportacao): ResultadoImportacao => ({
@@ -196,7 +198,13 @@ export class Biblioteca {
       })
     } catch (e) {
       const nome = (e as { name?: string } | null)?.name
-      throw new ErroDeImportacao(nome === 'PasswordException' ? 'protegido-por-senha' : 'arquivo-invalido')
+      throw new ErroDeImportacao(
+        nome === 'PasswordException'
+          ? 'protegido-por-senha'
+          : nome === 'ConversaoInterrompida'
+            ? 'conversao-interrompida'
+            : 'arquivo-invalido',
+      )
     }
     return {
       titulo: resultado.titulo,
@@ -227,6 +235,19 @@ export class Biblioteca {
   async remover(id: string) {
     if (!ID_VALIDO.test(id)) return
     this.banco.removerLivro(id)
-    await rm(join(this.#pastaLivros, id), { recursive: true, force: true })
+    // No Windows, um antivírus pode segurar o arquivo por um instante. Se ainda assim falhar,
+    // a pasta fica órfã e sai na próxima abertura do app (limparPastasOrfas).
+    await rm(join(this.#pastaLivros, id), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(
+      erro => console.warn('Pasta do livro não pôde ser apagada agora', erro),
+    )
+  }
+
+  /** Apaga pastas de livros que não estão no banco (importação interrompida, remoção que falhou). */
+  async limparPastasOrfas() {
+    const pastas = await readdir(this.#pastaLivros, { withFileTypes: true }).catch(() => [])
+    for (const pasta of pastas) {
+      if (!pasta.isDirectory() || !ID_VALIDO.test(pasta.name) || this.banco.obterLivro(pasta.name)) continue
+      await rm(join(this.#pastaLivros, pasta.name), { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
+    }
   }
 }

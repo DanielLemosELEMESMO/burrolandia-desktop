@@ -141,6 +141,18 @@ describe('estruturar: cabeçalhos, rodapés e colunas', () => {
     )
   })
 
+  it('não confunde título de capítulo no alto da página com cabeçalho repetido', () => {
+    const paginas = [1, 2, 3].map(n =>
+      pagina(n, [
+        item(`Capítulo ${n}`, MARGEM, 560, 20),
+        cheia(`Texto do capítulo ${['um', 'dois', 'três'][n - 1]}, que continua na linha de baixo e`, 500),
+        item('termina aqui.', MARGEM, 484),
+      ]),
+    )
+    const { blocos } = estruturar(documento(paginas))
+    expect(blocos.filter(b => b.tipo === 'h1').map(textoDe)).toEqual(['Capítulo 1', 'Capítulo 2', 'Capítulo 3'])
+  })
+
   it('lê duas colunas na ordem: a da esquerda inteira, depois a da direita', () => {
     const esquerda = (texto: string, y: number) => item(texto, 45, y, 10, 240)
     const direita = (texto: string, y: number) => item(texto, 310, y, 10, 240)

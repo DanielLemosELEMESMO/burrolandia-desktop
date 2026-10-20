@@ -1,6 +1,7 @@
 // Lê um PDF com o pdf.js e devolve só o que o conversor precisa: texto com posição, por página,
 // os marcadores (sumário) e as informações do documento.
 
+import { limparTexto } from '../epub/comum'
 import type { DocumentoPdf, ItemPdf, MarcadorPdf, PaginaPdf } from './tipos'
 
 type PdfJs = typeof import('pdfjs-dist/legacy/build/pdf.mjs')
@@ -15,7 +16,10 @@ export interface OpcoesDeExtracao {
   recursos?: { cMapUrl: string; standardFontDataUrl: string }
 }
 
-const textoOuNada = (valor: unknown) => (typeof valor === 'string' && valor.trim() ? valor.trim() : undefined)
+const textoOuNada = (valor: unknown) => {
+  const texto = typeof valor === 'string' ? limparTexto(valor).trim() : ''
+  return texto || undefined
+}
 
 async function paginaDoDestino(pdf: Documento, destino: unknown): Promise<number | null> {
   try {
@@ -36,7 +40,8 @@ async function lerMarcadores(pdf: Documento): Promise<MarcadorPdf[]> {
   const visitar = async (itens: typeof sumario, nivel: number) => {
     for (const item of itens) {
       const pagina = await paginaDoDestino(pdf, item.dest)
-      if (pagina && item.title?.trim()) marcadores.push({ titulo: item.title.trim(), pagina, nivel })
+      const titulo = textoOuNada(item.title)
+      if (pagina && titulo) marcadores.push({ titulo, pagina, nivel })
       if (item.items?.length && nivel < 3) await visitar(item.items, nivel + 1)
     }
   }
@@ -69,11 +74,12 @@ export async function extrairPdf(bytes: Uint8Array, opcoes: OpcoesDeExtracao = {
         const [a, b, c, d, e, f] = item.transform as number[]
         // Texto girado (lombadas, marcas na margem) fica de fora.
         if (Math.abs(b) > 0.01 || Math.abs(c) > 0.01 || a <= 0) continue
-        itens.push({ texto: item.str, x: e - x0, y: f - y0, largura: item.width, altura: Math.abs(d) || item.height })
+        const texto = limparTexto(item.str)
+        if (texto) itens.push({ texto, x: e - x0, y: f - y0, largura: item.width, altura: Math.abs(d) || item.height })
       }
       paginas.push({
         numero,
-        rotulo: rotulos?.[numero - 1]?.trim() || String(numero),
+        rotulo: textoOuNada(rotulos?.[numero - 1]) ?? String(numero),
         largura: x1 - x0,
         altura: y1 - y0,
         itens,

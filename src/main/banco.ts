@@ -68,9 +68,14 @@ export class Banco {
     const { user_version: versao } = this.#db.prepare('PRAGMA user_version').get() as { user_version: number }
     for (let i = versao; i < MIGRACOES.length; i++) {
       this.#db.exec('BEGIN')
-      this.#db.exec(MIGRACOES[i])
-      this.#db.exec(`PRAGMA user_version = ${i + 1}`)
-      this.#db.exec('COMMIT')
+      try {
+        this.#db.exec(MIGRACOES[i])
+        this.#db.exec(`PRAGMA user_version = ${i + 1}`)
+        this.#db.exec('COMMIT')
+      } catch (erro) {
+        this.#db.exec('ROLLBACK')
+        throw erro
+      }
     }
   }
 

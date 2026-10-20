@@ -68,6 +68,22 @@ describe('escreverEpub', () => {
     expect(nav).toMatch(/href="capitulo-002\.xhtml#pagina-2"[^>]*>2</)
   })
 
+  it('remove caracteres de controle, que o XML não aceita', () => {
+    const bytes = escreverEpub({
+      ...livroBase,
+      titulo: 'Livro de Teste\u0000',
+      autores: ['Fulana\u0001 de Tal'],
+      capitulos: [{ titulo: 'Capítulo\u0000 1', corpo: '<p>oi</p>' }],
+    })
+    const meta = lerEpub(bytes)
+    expect(meta.titulo).toBe('Livro de Teste')
+    expect(meta.autores).toEqual(['Fulana de Tal'])
+    const arquivos = unzipSync(bytes)
+    for (const nome of ['OEBPS/content.opf', 'OEBPS/nav.xhtml', 'OEBPS/capitulo-001.xhtml']) {
+      expect(strFromU8(arquivos[nome])).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/)
+    }
+  })
+
   it('escapa caracteres especiais nos metadados', () => {
     const arquivos = unzipSync(escreverEpub({ ...livroBase, titulo: 'Ciência & Fé <ensaios>' }))
     expect(strFromU8(arquivos['OEBPS/content.opf'])).toContain('Ciência &amp; Fé &lt;ensaios&gt;')
@@ -163,6 +179,19 @@ describe('lerEpub', () => {
 
   it('recusa arquivo que não é zip', () => {
     expect(() => lerEpub(strToU8('isto não é um epub'))).toThrow(expect.objectContaining({ codigo: 'arquivo-invalido' }))
+  })
+
+  it('trata XML malformado como arquivo inválido', () => {
+    const malformado = epubManual('<title>sem namespace</title><x:y>prefixo não declarado</x:y>', '')
+    expect(() => lerEpub(malformado)).toThrow(expect.objectContaining({ codigo: 'arquivo-invalido' }))
+  })
+
+  it('trata endereço malformado da capa como arquivo inválido', () => {
+    const malformado = epubManual(
+      '<dc:title>Livro</dc:title><meta name="cover" content="capa"/>',
+      '<item id="capa" href="imagens/capa%E0%A4%A.jpg" media-type="image/jpeg"/>',
+    )
+    expect(() => lerEpub(malformado)).toThrow(expect.objectContaining({ codigo: 'arquivo-invalido' }))
   })
 
   it('recusa zip sem container.xml', () => {

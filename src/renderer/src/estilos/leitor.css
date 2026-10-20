@@ -74,12 +74,12 @@
   right: 0;
   bottom: 0;
   z-index: 5;
-  height: 56px;
+  min-height: 56px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 8px;
-  padding: 0 24px;
+  gap: 4px;
+  padding: 4px 24px;
   background: var(--pagina);
 }
 
@@ -186,7 +186,7 @@
 
 .alternar-modo .segmento {
   flex-direction: row;
-  min-height: 40px;
+  min-height: var(--alvo);
   padding: 0 14px;
   border-radius: 999px;
   white-space: nowrap;
@@ -256,8 +256,6 @@
 }
 
 .rodape-zoom .botao-icone {
-  width: 36px;
-  height: 36px;
   font-size: 20px;
   line-height: 1;
 }

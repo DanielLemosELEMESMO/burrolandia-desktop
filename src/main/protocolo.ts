@@ -74,14 +74,10 @@ export function tratarProtocolo(biblioteca: Biblioteca, pastaInterface: string) 
       const caminho = biblioteca.caminhoDoArquivo(partes[1], partes[2])
       if (!caminho) return naoEncontrado()
       const resposta = await net.fetch(pathToFileURL(caminho).toString())
-      return new Response(resposta.body, {
-        headers: {
-          'content-type': tipoDe(caminho),
-          'cache-control': 'no-cache',
-          // Em desenvolvimento a interface vem do servidor do Vite, em outra origem.
-          'access-control-allow-origin': '*',
-        },
-      })
+      const cabecalhos: Record<string, string> = { 'content-type': tipoDe(caminho), 'cache-control': 'no-cache' }
+      // Em desenvolvimento a interface vem do servidor do Vite, em outra origem.
+      if (process.env.ELECTRON_RENDERER_URL) cabecalhos['access-control-allow-origin'] = new URL(process.env.ELECTRON_RENDERER_URL).origin
+      return new Response(resposta.body, { headers: cabecalhos })
     }
 
     const caminho = resolve(raizInterface, partes.length ? partes.join(sep) : 'index.html')

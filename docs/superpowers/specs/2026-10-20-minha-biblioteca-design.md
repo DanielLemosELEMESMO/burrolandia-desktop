@@ -60,7 +60,7 @@ Electron
 - **Local primeiro.** Tudo funciona sem internet. A parte 2 adiciona sincronização por cima, sem migrar dados: tabelas e ids já seguem o formato das tabelas do Supabase (UUID, datas ISO, `atualizado_em`).
 - **Formatos portáteis**, para o celular reaproveitar:
   - conteúdo: sempre EPUB (o original, ou o gerado a partir do PDF);
-  - posição: **Locator** no formato do Readium (`href`, `locations.progression`, `locations.totalProgression`, `text`), com extensões `locations.cfi` (EPUB CFI completo) e `locations.pagina` (página do PDF original).
+  - posição: **Locator** no formato do Readium (`href`, `locations.progression`, `locations.totalProgression`, `locations.fragments`, `text`), com extensões `locations.cfi` (EPUB CFI completo) e `locations.pagina` (rótulo da página do PDF original). `locations.position` não é usado, porque o índice do foliate não é a lista de posições do Readium.
 - **`src/nucleo` não depende do Electron.** O conversor PDF→EPUB e a leitura de metadados rodam em qualquer Node; na parte 2 podem ir para um servidor quando o celular também enviar arquivos.
 - **Armazenamento**: `node:sqlite` (embutido no Electron 44, sem módulo nativo) em `userData/burrolandia.db`, modo WAL. Arquivos em `userData/livros/<id>/`. A pasta de dados pode ser trocada pela variável `BURROLANDIA_DADOS` (testes).
 - **Protocolo `app://burrolandia/`**: serve o renderer em produção e os arquivos dos livros em `/livros/<id>/<arquivo>`. Os iframes do foliate (blob:) herdam a origem, então as fontes locais carregam dentro do livro.
@@ -92,6 +92,10 @@ preferencias(chave TEXT PRIMARY KEY, valor TEXT NOT NULL)  -- JSON por chave
 ```
 
 A etapa 3 acrescenta `obras` e `edicoes` (com ids do Open Library) e `livros.edicao_id`.
+
+Notas para a parte 2 (sincronização):
+- Remover hoje apaga a linha (`DELETE`). Para levar remoções feitas sem internet, a parte 2 troca isso por uma marca (`removido_em`) antes de ligar a sincronização.
+- `estado` hoje só vale `pronto`; ele vai servir para processamento em segundo plano (por exemplo, PDF enviado pelo celular e convertido no servidor). Importações interrompidas não ficam no banco, e as pastas que sobram são apagadas na abertura do app.
 
 ## 5. Fluxos
 
@@ -129,7 +133,10 @@ Roda num processo utilitário do Electron (sem travar a janela), com `pdfjs-dist
 8. A capa do PDF é a primeira página, desenhada pela interface e guardada como JPEG.
 9. Posição no PDF: o Locator leva o fragmento `page=N` (página original) ou `pagina-N` (âncora no texto adaptado); um modo abre onde o outro parou.
 
-Limites conhecidos: imagens e tabelas do PDF não entram no texto adaptado (estão na página original); notas de rodapé entram como parágrafos; PDFs com layout muito livre (revistas) podem sair fora de ordem.
+10. Caracteres que o XML não aceita (nulo e outros de controle, comuns em títulos de PDF) são removidos em um ponto só, ao escrever o XML. Se mesmo assim o texto adaptado não abrir, o leitor cai para a página original com um aviso.
+11. Na página original, a página atual é a do comando (abrir, setas, zoom) ou, na rolagem feita pela pessoa, a que está logo abaixo da barra de cima.
+
+Limites conhecidos: imagens e tabelas do PDF não entram no texto adaptado (estão na página original); notas de rodapé entram como parágrafos; PDFs com layout muito livre (revistas) podem sair fora de ordem; capítulos muito longos (quando o PDF não tem sumário nem títulos claros) não são divididos, o que deixa a paginação mais lenta e o "falta X neste capítulo" longo.
 
 ## 8. Testes e verificação
 

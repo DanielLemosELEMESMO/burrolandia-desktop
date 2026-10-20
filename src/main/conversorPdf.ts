@@ -12,6 +12,13 @@ type Mensagem =
 
 const LIMITE_DE_TEMPO = 10 * 60 * 1000
 
+/** A conversão não terminou (demorou demais ou o processo caiu): não quer dizer que o PDF está ruim. */
+const interrompida = (mensagem: string) => {
+  const erro = new Error(mensagem)
+  erro.name = 'ConversaoInterrompida'
+  return erro
+}
+
 export const converterEmProcessoSeparado: ConversorDePdf = (bytes, { aoAndamento, ...opcoes }) =>
   new Promise((resolve, reject) => {
     const filho = utilityProcess.fork(caminhoDoConversor, [], { serviceName: 'Burrolândia: conversor de PDF' })
@@ -23,7 +30,7 @@ export const converterEmProcessoSeparado: ConversorDePdf = (bytes, { aoAndamento
     }
     const limite = setTimeout(() => {
       encerrar()
-      reject(new Error('O PDF demorou demais para converter'))
+      reject(interrompida('O PDF demorou demais para converter'))
     }, LIMITE_DE_TEMPO)
 
     filho.on('message', (mensagem: Mensagem) => {
@@ -41,7 +48,7 @@ export const converterEmProcessoSeparado: ConversorDePdf = (bytes, { aoAndamento
     filho.on('exit', codigo => {
       if (terminou) return
       clearTimeout(limite)
-      reject(new Error(`O conversor de PDF parou (código ${codigo})`))
+      reject(interrompida(`O conversor de PDF parou (código ${codigo})`))
     })
     filho.postMessage({ bytes, ...opcoes })
   })

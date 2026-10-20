@@ -39,13 +39,20 @@ function extrair(bytes: Uint8Array, nomes: (nome: string) => boolean): Record<st
 }
 
 function xml(bytes: Uint8Array): Document {
+  const corrompido = () => new ErroEpub('arquivo-invalido', 'O EPUB tem um arquivo interno corrompido.')
   let falhou = false
-  const doc = new DOMParser({
-    onError: nivel => {
-      if (nivel === 'fatalError') falhou = true
-    },
-  }).parseFromString(strFromU8(bytes), 'application/xml')
-  if (falhou || !doc.documentElement) throw new ErroEpub('arquivo-invalido', 'O EPUB tem um arquivo interno corrompido.')
+  let doc: Document
+  try {
+    doc = new DOMParser({
+      onError: nivel => {
+        if (nivel === 'fatalError') falhou = true
+      },
+    }).parseFromString(strFromU8(bytes), 'application/xml')
+  } catch {
+    // O xmldom lança ParseError em alguns erros (por exemplo, prefixo de namespace não declarado).
+    throw corrompido()
+  }
+  if (falhou || !doc.documentElement) throw corrompido()
   return doc
 }
 
@@ -65,7 +72,13 @@ const atributo = (el: Element, nome: string) => {
 
 function resolverCaminho(base: string, href: string) {
   const partes = base ? base.split('/') : []
-  for (const parte of decodeURIComponent(href.split('#')[0]).split('/')) {
+  let decodificado: string
+  try {
+    decodificado = decodeURIComponent(href.split('#')[0])
+  } catch {
+    throw new ErroEpub('arquivo-invalido', 'O EPUB tem um endereço interno malformado.')
+  }
+  for (const parte of decodificado.split('/')) {
     if (parte === '..') partes.pop()
     else if (parte && parte !== '.') partes.push(parte)
   }

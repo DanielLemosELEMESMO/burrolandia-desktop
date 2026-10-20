@@ -123,15 +123,18 @@ const naMargem = (linha: Linha, pagina: PaginaPdf) => linha.y > pagina.altura * 
 
 function removerCabecalhosERodapes(porPagina: Linha[][], paginas: PaginaPdf[]) {
   const comTexto = porPagina.filter(l => l.length).length
+  // Cabeçalho e rodapé não usam letra maior que a do texto; título de capítulo no alto da página usa.
+  const corpo = tamanhoDoCorpo(porPagina.flat())
+  const candidata = (l: Linha, pagina: PaginaPdf) => naMargem(l, pagina) && l.tamanho <= corpo * 1.1
   const repeticoes = new Map<string, number>()
   porPagina.forEach((linhas, i) => {
-    const vistas = new Set(linhas.filter(l => naMargem(l, paginas[i])).map(l => normalizar(l.texto)))
+    const vistas = new Set(linhas.filter(l => candidata(l, paginas[i])).map(l => normalizar(l.texto)))
     for (const texto of vistas) repeticoes.set(texto, (repeticoes.get(texto) ?? 0) + 1)
   })
   const minimo = Math.max(2, Math.ceil(comTexto * 0.3))
   return porPagina.map((linhas, i) =>
     linhas.filter(l => {
-      if (!naMargem(l, paginas[i])) return true
+      if (!candidata(l, paginas[i])) return true
       if (NUMERO_DE_PAGINA.test(l.texto)) return false
       return (repeticoes.get(normalizar(l.texto)) ?? 0) < minimo
     }),

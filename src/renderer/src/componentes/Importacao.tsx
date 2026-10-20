@@ -10,10 +10,10 @@ import { Icone } from './Icone'
 
 type Estado =
   | { fase: 'ocioso' }
-  | { fase: 'andamento'; andamento: AndamentoImportacao }
-  | { fase: 'fim'; livro: Livro }
-  | { fase: 'repetido'; livro: Livro }
-  | { fase: 'erro'; mensagem: string }
+  | { fase: 'andamento'; andamento: AndamentoImportacao; adaptou: boolean }
+  | { fase: 'fim'; livro: Livro; aviso?: string }
+  | { fase: 'repetido'; livro: Livro; aviso?: string }
+  | { fase: 'erro'; mensagem: string; aviso?: string }
 
 const FALHA_INESPERADA = 'Algo deu errado ao adicionar o livro. Tente de novo; se continuar, reinicie o app.'
 
@@ -32,11 +32,16 @@ async function comCapa(livro: Livro): Promise<Livro> {
 export function useImportacao(aoMudarBiblioteca: () => void) {
   const [estado, setEstado] = useState<Estado>({ fase: 'ocioso' })
   const importando = useRef(false)
+  // O passo "Adaptando" continua na lista depois que termina (só aparece para PDF).
+  const adaptou = useRef(false)
+  const aviso = useRef<string | undefined>(undefined)
 
   useEffect(
     () =>
       api.biblioteca.aoAndamento(andamento => {
-        if (importando.current) setEstado({ fase: 'andamento', andamento })
+        if (!importando.current) return
+        if (andamento.etapa === 'adaptando') adaptou.current = true
+        setEstado({ fase: 'andamento', andamento, adaptou: adaptou.current })
       }),
     [],
   )
@@ -51,12 +56,12 @@ export function useImportacao(aoMudarBiblioteca: () => void) {
         const livro = await comCapa(resultado.livro)
         importando.current = false
         aoMudarBiblioteca()
-        setEstado({ fase: 'fim', livro })
+        setEstado({ fase: 'fim', livro, aviso: aviso.current })
         return
       }
       importando.current = false
-      if (resultado.tipo === 'repetido') setEstado({ fase: 'repetido', livro: resultado.livro })
-      else setEstado({ fase: 'erro', mensagem: resultado.mensagem })
+      if (resultado.tipo === 'repetido') setEstado({ fase: 'repetido', livro: resultado.livro, aviso: aviso.current })
+      else setEstado({ fase: 'erro', mensagem: resultado.mensagem, aviso: aviso.current })
     },
     [aoMudarBiblioteca],
   )
@@ -65,6 +70,7 @@ export function useImportacao(aoMudarBiblioteca: () => void) {
     async (acao: () => Promise<ResultadoImportacao | null>) => {
       if (importando.current) return
       importando.current = true
+      adaptou.current = false
       try {
         await concluir(await acao())
       } catch (e) {
@@ -76,11 +82,16 @@ export function useImportacao(aoMudarBiblioteca: () => void) {
     [concluir],
   )
 
-  const adicionar = useCallback(() => executar(() => api.biblioteca.adicionar()), [executar])
+  const adicionar = useCallback(() => {
+    aviso.current = undefined
+    return executar(() => api.biblioteca.adicionar())
+  }, [executar])
+  /** Importa um arquivo arrastado; o aviso aparece no fim (por exemplo, quando vieram vários). */
   const importar = useCallback(
-    (caminho: string) => {
+    (caminho: string, avisoNoFim?: string) => {
       if (importando.current) return Promise.resolve()
-      setEstado({ fase: 'andamento', andamento: { etapa: 'lendo' } })
+      aviso.current = avisoNoFim
+      setEstado({ fase: 'andamento', andamento: { etapa: 'lendo' }, adaptou: false })
       return executar(() => api.biblioteca.importar(caminho))
     },
     [executar],
@@ -96,13 +107,13 @@ const ETAPAS: { etapa: AndamentoImportacao['etapa']; rotulo: string }[] = [
   { etapa: 'guardando', rotulo: 'Guardando na sua biblioteca' },
 ]
 
-function Andamento({ andamento }: { andamento: AndamentoImportacao }) {
+function Andamento({ andamento, adaptou }: { andamento: AndamentoImportacao; adaptou: boolean }) {
   const atual = ETAPAS.findIndex(e => e.etapa === andamento.etapa)
   const comContagem = andamento.total ? Math.round(((andamento.atual ?? 0) / andamento.total) * 100) : null
   return (
     <>
       <ol className="etapas">
-        {ETAPAS.filter(e => e.etapa !== 'adaptando' || andamento.etapa === 'adaptando').map(e => {
+        {ETAPAS.filter(e => e.etapa !== 'adaptando' || adaptou).map(e => {
           const indice = ETAPAS.indexOf(e)
           const situacao = indice < atual ? 'feita' : indice === atual ? 'atual' : 'depois'
           return (
@@ -151,7 +162,7 @@ export function DialogosDeImportacao({
   return (
     <>
       <Dialogo aberto={estado.fase === 'andamento'} titulo="Preparando seu livro" aoFechar={() => {}} travado>
-        {estado.fase === 'andamento' && <Andamento andamento={estado.andamento} />}
+        {estado.fase === 'andamento' && <Andamento andamento={estado.andamento} adaptou={estado.adaptou} />}
       </Dialogo>
 
       <Dialogo aberto={estado.fase === 'fim'} titulo="Seu livro está na biblioteca" aoFechar={aoFechar}>
@@ -165,6 +176,7 @@ export function DialogosDeImportacao({
               <li className="feito">Guardado na sua biblioteca, neste computador</li>
               <li>Quando você ler, o app lembra sozinho onde parou</li>
             </ol>
+            {estado.aviso && <p className="dica aviso-importacao">{estado.aviso}</p>}
             <div className="botoes">
               <button type="button" className="botao principal" onClick={() => aoLer(estado.livro)}>
                 Começar a ler
@@ -181,6 +193,7 @@ export function DialogosDeImportacao({
         {estado.fase === 'repetido' && (
           <>
             <LivroResumo livro={estado.livro} />
+            {estado.aviso && <p className="dica aviso-importacao">{estado.aviso}</p>}
             <div className="botoes">
               <button type="button" className="botao principal" onClick={() => aoLer(estado.livro)}>
                 Abrir o livro
@@ -197,6 +210,7 @@ export function DialogosDeImportacao({
         {estado.fase === 'erro' && (
           <>
             <p className="mensagem-erro">{estado.mensagem}</p>
+            {estado.aviso && <p className="dica aviso-importacao">{estado.aviso}</p>}
             <div className="botoes">
               <button type="button" className="botao principal" onClick={aoFechar}>
                 Entendi

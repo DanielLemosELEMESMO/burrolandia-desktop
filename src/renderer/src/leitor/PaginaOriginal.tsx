@@ -15,6 +15,8 @@ const ZOOM_MAXIMO = 2.5
 const LARGURA_MAXIMA = 920
 const MARGEM = 32
 const DESENHADAS_NO_MAXIMO = 12
+/** Altura da barra de cima: a página "atual" é a que está logo abaixo dela. */
+const TOPO_VISIVEL = 72
 
 export function PaginaOriginal({
   url,
@@ -37,6 +39,9 @@ export function PaginaOriginal({
   const [largura, setLargura] = useState(0)
   const [zoom, setZoom] = useState(1)
   const atual = useRef(paginaInicial)
+  // Enquanto a rolagem vem de um comando (abrir, setas, zoom), a página atual é a do comando;
+  // só a rolagem feita pela pessoa (roda, barra de rolagem, toque) recalcula a página.
+  const rolagemPorComando = useRef(true)
   const aoMudar = useRef(aoMudarPagina)
   aoMudar.current = aoMudarPagina
 
@@ -133,12 +138,19 @@ export function PaginaOriginal({
 
   const vagas = () => Array.from(rolagem.current?.querySelectorAll<HTMLElement>('.pagina-vaga') ?? [])
 
+  const avisar = (numero: number) => {
+    atual.current = numero
+    aoMudar.current(numero, rotulos[numero - 1] ?? String(numero), total)
+  }
+
   const irPara = (numero: number, suave = true) => {
     const vaga = vagas()[numero - 1]
     if (!vaga || !rolagem.current) return
+    rolagemPorComando.current = true
+    if (numero !== atual.current) avisar(numero)
     const reduzido = matchMedia('(prefers-reduced-motion: reduce)').matches
     // Desconta a barra de cima, para o topo da página aparecer logo abaixo dela.
-    rolagem.current.scrollTo({ top: vaga.offsetTop - 72, behavior: suave && !reduzido ? 'smooth' : 'auto' })
+    rolagem.current.scrollTo({ top: vaga.offsetTop - TOPO_VISIVEL, behavior: suave && !reduzido ? 'smooth' : 'auto' })
   }
 
   // Abre na página pedida e mantém a página atual no lugar quando o tamanho muda.
@@ -146,32 +158,43 @@ export function PaginaOriginal({
     if (pdf && largura) irPara(atual.current, false)
   }, [pdf, largura, larguraDaPagina])
 
-  // A página atual é a que ocupa o meio da tela.
+  // Na rolagem feita pela pessoa, a página atual é a que está na linha logo abaixo da barra de cima
+  // (a mesma referência usada por irPara); no fim do documento, é a última.
   useEffect(() => {
     const elemento = rolagem.current
     if (!elemento || !total) return
     let quadro = 0
     const medir = () => {
       quadro = 0
-      const meio = elemento.scrollTop + elemento.clientHeight / 2
       const lista = vagas()
+      const noFim = elemento.scrollTop >= elemento.scrollHeight - elemento.clientHeight - 2
       let numero = 1
-      for (const vaga of lista) {
-        if (vaga.offsetTop <= meio) numero = Number(vaga.dataset.numero)
-        else break
+      if (noFim) numero = lista.length
+      else {
+        const linha = elemento.scrollTop + TOPO_VISIVEL + 1
+        for (const vaga of lista) {
+          if (vaga.offsetTop <= linha) numero = Number(vaga.dataset.numero)
+          else break
+        }
       }
-      if (numero !== atual.current) {
-        atual.current = numero
-        aoMudar.current(numero, rotulos[numero - 1] ?? String(numero), total)
-      }
+      if (numero !== atual.current) avisar(numero)
     }
     const aoRolar = () => {
-      if (!quadro) quadro = requestAnimationFrame(medir)
+      if (!rolagemPorComando.current && !quadro) quadro = requestAnimationFrame(medir)
+    }
+    const pelaPessoa = () => {
+      rolagemPorComando.current = false
     }
     elemento.addEventListener('scroll', aoRolar, { passive: true })
+    for (const evento of ['wheel', 'pointerdown', 'touchstart', 'keydown'] as const) {
+      elemento.addEventListener(evento, pelaPessoa, { passive: true })
+    }
     aoMudar.current(atual.current, rotulos[atual.current - 1] ?? String(atual.current), total)
     return () => {
       elemento.removeEventListener('scroll', aoRolar)
+      for (const evento of ['wheel', 'pointerdown', 'touchstart', 'keydown'] as const) {
+        elemento.removeEventListener(evento, pelaPessoa)
+      }
       cancelAnimationFrame(quadro)
     }
   }, [total, rotulos])

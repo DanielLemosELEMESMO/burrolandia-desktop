@@ -65,6 +65,17 @@ describe('converterPdfEmEpub', () => {
     ])
   })
 
+  it('limpa caracteres de controle do título, do autor e dos marcadores', async () => {
+    const r = await converterPdfEmEpub(fixture('titulo-com-nulo.pdf'), opcoes)
+    expect(r).toMatchObject({ titulo: 'Livro de Teste', autores: ['Fulana de Tal'] })
+    const arquivos = unzipSync(r.epub!)
+    for (const [nome, conteudo] of Object.entries(arquivos)) {
+      if (/\.(xhtml|opf)$/.test(nome)) expect(strFromU8(conteudo)).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/)
+    }
+    expect(strFromU8(arquivos['OEBPS/nav.xhtml'])).toContain('>Capitulo 1<')
+    expect(lerEpub(r.epub!).titulo).toBe('Livro de Teste')
+  })
+
   it('gera um EPUB com os metadados do PDF', async () => {
     const r = await converterPdfEmEpub(fixture('dom-casmurro-uma-coluna.pdf'), opcoes)
     expect(lerEpub(r.epub!)).toMatchObject({ titulo: 'Dom Casmurro', idioma: 'pt-BR' })

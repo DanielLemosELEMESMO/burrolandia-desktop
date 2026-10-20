@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -173,6 +173,29 @@ describe('Biblioteca', () => {
     const resultado = await biblioteca.importar(arquivo('dom.epub', epub()))
     if (resultado.tipo !== 'adicionado') throw new Error('deveria ter adicionado')
     expect(await biblioteca.salvarCapa(resultado.livro.id, strToU8('<script>'))).toBeNull()
+  })
+
+  it('quando a conversão do PDF não termina, explica sem chamar o arquivo de corrompido', async () => {
+    const lento = new Biblioteca(join(pasta, 'dados'), banco, async () => {
+      const erro = new Error('demorou')
+      erro.name = 'ConversaoInterrompida'
+      throw erro
+    })
+    const resultado = await lento.importar(arquivo('dom.pdf', pdfDeTeste('dom-casmurro-uma-coluna.pdf')))
+    expect(resultado).toMatchObject({ tipo: 'erro', codigo: 'conversao-interrompida' })
+  })
+
+  it('limpa pastas de livros que não estão mais na biblioteca', async () => {
+    const resultado = await biblioteca.importar(arquivo('dom.epub', epub()))
+    if (resultado.tipo !== 'adicionado') throw new Error('deveria ter adicionado')
+    const orfa = join(pasta, 'dados', 'livros', crypto.randomUUID())
+    mkdirSync(orfa, { recursive: true })
+    writeFileSync(join(orfa, 'original.epub'), 'resto de importação interrompida')
+
+    await biblioteca.limparPastasOrfas()
+
+    expect(existsSync(orfa)).toBe(false)
+    expect(existsSync(join(pasta, 'dados', 'livros', resultado.livro.id))).toBe(true)
   })
 
   it('não entrega arquivos fora da pasta do livro', async () => {

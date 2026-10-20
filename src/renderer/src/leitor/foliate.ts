@@ -29,6 +29,8 @@ export interface DetalheRelocate {
 
 export interface RendererFoliate extends HTMLElement {
   setStyles(css: string): void
+  /** anchor: fração da seção (0 = começo, 1 = fim). */
+  goTo(destino: { index: number; anchor?: number }): Promise<void>
 }
 
 export interface VisaoFoliate extends HTMLElement {

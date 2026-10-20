@@ -62,6 +62,34 @@ function hrefDaPagina(livro: LivroFoliate, numero: number): string | null {
   return melhor
 }
 
+/**
+ * Abre o texto onde você parou: pelo CFI; se ele não levar a lugar nenhum (o livro mudou), pela
+ * página do original; depois pela fração do livro; por fim, no começo do texto.
+ */
+async function voltarParaOndeParou(visao: VisaoFoliate, posicao: Locator | null) {
+  const cfi = posicao?.locations.cfi
+  if (cfi && visao.resolveNavigation(cfi)) {
+    try {
+      await visao.init({ lastLocation: cfi })
+    } catch (erro) {
+      console.warn('A posição salva não abriu; tentando de outro jeito', erro)
+    }
+    if (visao.lastLocation) return
+  }
+  const pagina = paginaDoLocator(posicao)
+  const href = pagina ? hrefDaPagina(visao.book, pagina) : null
+  if (href) {
+    await visao.goTo(href)
+    if (visao.lastLocation) return
+  }
+  const fracao = posicao?.locations.totalProgression
+  if (fracao) {
+    await visao.goToFraction(fracao)
+    if (visao.lastLocation) return
+  }
+  await visao.init({ showTextStart: true })
+}
+
 const chaveDoModo = (id: string) => `burrolandia:modo:${id}`
 
 function modoInicial(livro: Livro): Modo {
@@ -88,7 +116,6 @@ function paraLocator(visao: VisaoFoliate, d: DetalheRelocate): Locator {
       fragments: pagina ? [`pagina-${pagina}`] : undefined,
       progression: fim > inicio ? limitar((d.fraction - inicio) / (fim - inicio)) : 0,
       totalProgression: limitar(d.fraction),
-      position: d.location ? d.location.current + 1 : undefined,
       cfi: d.cfi,
       pagina: d.pageItem?.label,
     },
@@ -112,8 +139,9 @@ export function TelaLeitor({
   const host = useRef<HTMLDivElement>(null)
   const visao = useRef<VisaoFoliate | null>(null)
   const original = useRef<ControleDaPaginaOriginal>(null)
-  const temTexto = !!livro.arquivoLeitura
   const ehPdf = livro.formatoOriginal === 'pdf'
+  const [textoFalhou, setTextoFalhou] = useState(false)
+  const temTexto = !!livro.arquivoLeitura && !textoFalhou
   const [modo, setModo] = useState<Modo>(() => modoInicial(livro))
   const [estado, setEstado] = useState<'abrindo' | 'pronto' | 'erro'>(temTexto ? 'abrindo' : 'pronto')
   const [onde, setOnde] = useState<DetalheRelocate | null>(null)
@@ -216,6 +244,15 @@ export function TelaLeitor({
           if (emControle) return
           e.preventDefault()
           return e.shiftKey ? voltar() : avancar()
+        case 'Home':
+        case 'End': {
+          const v = visao.current
+          const indice = v?.lastLocation?.section?.current
+          if (modoAtual.current !== 'texto' || !v || indice === undefined) return
+          e.preventDefault()
+          void v.renderer.goTo({ index: indice, anchor: e.key === 'Home' ? 0 : 1 })
+          return
+        }
         case 'Tab':
           mostrarBarras()
       }
@@ -301,18 +338,17 @@ export function TelaLeitor({
         if (!ativo) return
         setSumario(elemento.book.toc ?? [])
         aplicarAparencia()
-        const posicao = livro.posicao
-        const cfi = posicao?.locations.cfi
-        const pagina = paginaDoLocator(posicao)
-        const hrefDaPaginaSalva = pagina ? hrefDaPagina(elemento.book, pagina) : null
-        if (cfi && elemento.resolveNavigation(cfi)) await elemento.init({ lastLocation: cfi })
-        else if (hrefDaPaginaSalva) await elemento.goTo(hrefDaPaginaSalva)
-        else if (posicao?.locations.totalProgression) await elemento.goToFraction(posicao.locations.totalProgression)
-        else await elemento.init({ showTextStart: true })
+        await voltarParaOndeParou(elemento, livro.posicao)
         if (ativo) setEstado('pronto')
       } catch (erro) {
         console.error(erro)
-        if (ativo) setEstado('erro')
+        if (!ativo) return
+        // Num PDF, a página original continua lá: abre nela em vez de mostrar erro.
+        if (livro.formatoOriginal === 'pdf') {
+          setTextoFalhou(true)
+          setModo('original')
+          setEstado('pronto')
+        } else setEstado('erro')
       }
     })()
 
@@ -376,11 +412,23 @@ export function TelaLeitor({
 
   const aoFalharOriginal = useCallback(() => setEstado('erro'), [])
 
-  const mudarModo = (novo: Modo) => {
+  // Grava a posição antes de pedir a lista da biblioteca, para o progresso aparecer atualizado.
+  const sair = () => {
+    salvarAgora()
+    aoVoltar()
+  }
+
+  /** Troca entre texto adaptado e página original; sincronizar=false quando outro destino já foi escolhido. */
+  const mudarModo = (novo: Modo, sincronizar = true) => {
     if (novo === modo) return
     if (novo === 'original') {
-      setPaginaParaAbrir(numeroDaAncora(onde?.pageItem?.href) ?? paginaDoLocator(ultimaPosicao.current) ?? 1)
-    } else {
+      setPaginaParaAbrir(
+        numeroDaAncora(onde?.pageItem?.href) ??
+          paginaDoLocator(ultimaPosicao.current) ??
+          paginaDoLocator(livro.posicao) ??
+          1,
+      )
+    } else if (sincronizar) {
       const v = visao.current
       const numero = ondeNoOriginal?.numero
       const href = v && numero ? hrefDaPagina(v.book, numero) : null
@@ -417,7 +465,7 @@ export function TelaLeitor({
       onMouseMove={mostrarBarras}
     >
       <header className="leitor-barra leitor-topo">
-        <button type="button" className="botao-icone" aria-label="Voltar à biblioteca" onClick={aoVoltar}>
+        <button type="button" className="botao-icone" aria-label="Voltar à biblioteca" onClick={sair}>
           <Icone nome="voltar" />
         </button>
         <div className="leitor-titulo">
@@ -437,6 +485,7 @@ export function TelaLeitor({
                   type="radio"
                   name="modo-de-leitura"
                   checked={modo === valor}
+                  disabled={estado !== 'pronto'}
                   onChange={() => mudarModo(valor)}
                   // Depois de um clique, as setas voltam a virar a página em vez de trocar o modo.
                   onClick={e => e.detail > 0 && e.currentTarget.blur()}
@@ -470,9 +519,15 @@ export function TelaLeitor({
         </div>
       )}
 
-      {!temTexto && (
+      {!livro.arquivoLeitura && (
         <p className="leitor-nota" role="note">
           Este PDF é uma imagem digitalizada, então ele abre como foi impresso. Ainda não dá para adaptar o texto à tela.
+        </p>
+      )}
+      {textoFalhou && (
+        <p className="leitor-nota" role="note">
+          Não deu para abrir o texto adaptado deste PDF, então ele abre como foi impresso. Remover e adicionar o livro de
+          novo refaz a adaptação.
         </p>
       )}
 
@@ -486,7 +541,7 @@ export function TelaLeitor({
           <Icone nome="aviso" />
           <h2>Não consegui abrir este livro</h2>
           <p>O arquivo pode estar danificado. Você pode removê-lo da biblioteca e adicioná-lo de novo.</p>
-          <button type="button" className="botao principal" onClick={aoVoltar}>
+          <button type="button" className="botao principal" onClick={sair}>
             Voltar à biblioteca
           </button>
         </div>
@@ -538,7 +593,7 @@ export function TelaLeitor({
           atual={onde?.tocItem?.href}
           aoIr={href => {
             setPainel(null)
-            if (noOriginal) mudarModo('texto')
+            if (noOriginal) mudarModo('texto', false)
             void visao.current?.goTo(href)
           }}
         />

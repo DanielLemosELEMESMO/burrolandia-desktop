@@ -90,8 +90,11 @@ export function TelaBiblioteca({
       e.preventDefault()
       profundidade = 0
       setArrastando(false)
-      const arquivo = e.dataTransfer?.files[0]
-      if (arquivo) void importacao.importar(api.biblioteca.caminhoDoArquivo(arquivo))
+      const arquivos = e.dataTransfer?.files
+      const arquivo = arquivos?.[0]
+      if (!arquivo) return
+      const aviso = arquivos.length > 1 ? 'Os livros entram um por vez: adicionei só o primeiro arquivo.' : undefined
+      void importacao.importar(api.biblioteca.caminhoDoArquivo(arquivo), aviso)
     }
     window.addEventListener('dragenter', entrar)
     window.addEventListener('dragover', sobre)

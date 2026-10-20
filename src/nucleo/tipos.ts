@@ -100,6 +100,7 @@ export type CodigoErroImportacao =
   | 'drm'
   | 'arquivo-inacessivel'
   | 'protegido-por-senha'
+  | 'conversao-interrompida'
 
 export type ResultadoImportacao =
   | { tipo: 'adicionado'; livro: Livro }

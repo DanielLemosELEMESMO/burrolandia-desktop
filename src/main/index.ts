@@ -1,6 +1,6 @@
-import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
-import { app, BrowserWindow, Menu, nativeTheme, screen, shell } from 'electron'
+import { existsSync, mkdirSync } from 'node:fs'
+import { join, sep } from 'node:path'
+import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, shell } from 'electron'
 import type { Preferencias } from '@nucleo/tipos'
 import { Banco } from './banco'
 import { Biblioteca } from './biblioteca'
@@ -23,12 +23,20 @@ interface EstadoDaJanela {
   maximizada: boolean
 }
 
-const FUNDO_POR_TEMA = { papel: '#fbfaf6', sepia: '#f3ead8', noite: '#141816' }
+// O fundo da janela antes da primeira pintura: o mesmo --fundo dos temas (estilos/tokens.css).
+const FUNDO_POR_TEMA = { papel: '#f6f4ee', sepia: '#efe5cf', noite: '#111412' }
 
 const temaEfetivo = (preferencias: Preferencias) =>
   preferencias.tema === 'automatico' ? (nativeTheme.shouldUseDarkColors ? 'noite' : 'papel') : preferencias.tema
 
 const corDeFundo = (preferencias: Preferencias) => FUNDO_POR_TEMA[temaEfetivo(preferencias)]
+
+/** Mapas de caracteres e fontes padrão do pdf.js, copiados junto com a interface (pdfjs/). */
+function recursosDoPdfjs(pastaInterface: string) {
+  const empacotados = join(pastaInterface, 'pdfjs')
+  const pasta = existsSync(empacotados) ? empacotados : join(app.getAppPath(), 'src/renderer/public/pdfjs')
+  return { cMapUrl: join(pasta, 'cmaps') + sep, standardFontDataUrl: join(pasta, 'standard_fonts') + sep }
+}
 
 /** Só reaproveita a posição antiga se ela ainda cabe numa tela conectada. */
 function estadoValido(estado: EstadoDaJanela | undefined): EstadoDaJanela {
@@ -103,12 +111,26 @@ if (!app.requestSingleInstanceLock()) {
     if (app.isPackaged && process.platform !== 'darwin') Menu.setApplicationMenu(null)
 
     const pastaDados = app.getPath('userData')
-    mkdirSync(pastaDados, { recursive: true })
-    banco = new Banco(join(pastaDados, 'burrolandia.db'))
-    const biblioteca = new Biblioteca(pastaDados, banco, converterEmProcessoSeparado)
+    try {
+      mkdirSync(pastaDados, { recursive: true })
+      banco = new Banco(join(pastaDados, 'burrolandia.db'))
+    } catch (erro) {
+      // Sem isso, um banco corrompido deixaria o app aberto sem janela nenhuma.
+      dialog.showErrorBox(
+        'Não deu para abrir a sua biblioteca',
+        `O arquivo da biblioteca não abriu (${(erro as Error).message}).\n\nOs seus livros continuam em:\n${pastaDados}\n\nFeche outras cópias do app e tente de novo.`,
+      )
+      app.quit()
+      return
+    }
+    const pastaInterface = caminhoDaInterface(__dirname)
+    const biblioteca = new Biblioteca(pastaDados, banco, (bytes, opcoes) =>
+      converterEmProcessoSeparado(bytes, { ...opcoes, recursos: recursosDoPdfjs(pastaInterface) }),
+    )
     const bancoAberto = banco
+    void biblioteca.limparPastasOrfas()
 
-    tratarProtocolo(biblioteca, caminhoDaInterface(__dirname))
+    tratarProtocolo(biblioteca, pastaInterface)
     registrarIpc(banco, biblioteca, preferencias => {
       for (const janela of BrowserWindow.getAllWindows()) janela.setBackgroundColor(corDeFundo(preferencias))
     })

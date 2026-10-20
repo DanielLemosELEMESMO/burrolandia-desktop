@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { writeFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import { gravarLivrosDeTeste } from '../fixtures/livros'
+import type { ApiBurrolandia } from '../../src/preload/api'
 import { abrirApp, escolherArquivo, novaPastaDeDados } from './app'
 
 test('adiciona um EPUB, lê e reabre exatamente onde parou', async () => {
@@ -105,4 +106,26 @@ test('o tema escolhido vale para o app inteiro e fica guardado', async () => {
   const segunda = await abrirApp(dados)
   await expect(segunda.janela.locator('html')).toHaveAttribute('data-tema', 'noite')
   await segunda.app.close()
+})
+
+test('uma posição salva que não existe mais no livro não deixa a tela em branco', async () => {
+  const dados = novaPastaDeDados()
+  const livros = gravarLivrosDeTeste(join(dados, 'origem'))
+  const { app, janela } = await abrirApp(dados)
+
+  await escolherArquivo(app, livros.domCasmurro)
+  await janela.getByRole('button', { name: 'Adicionar livro' }).first().click()
+  await janela.getByRole('button', { name: 'Voltar à biblioteca' }).click()
+  await janela.evaluate(async () => {
+    const { burrolandia } = globalThis as unknown as { burrolandia: ApiBurrolandia }
+    const [livro] = await burrolandia.biblioteca.listar()
+    await burrolandia.leitura.salvarPosicao(livro.id, {
+      href: 'OEBPS/capitulo-050.xhtml',
+      type: 'application/xhtml+xml',
+      locations: { cfi: 'epubcfi(/6/98!/4/2/1:0)', totalProgression: 0.6 },
+    })
+  })
+  await janela.getByRole('button', { name: /Dom Casmurro/ }).first().click()
+  await expect(janela.getByRole('main', { name: 'Lendo Dom Casmurro' })).toHaveAttribute('data-cfi', /^epubcfi/)
+  await app.close()
 })
