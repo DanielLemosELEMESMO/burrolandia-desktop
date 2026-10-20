@@ -13,8 +13,11 @@ const carregarPdfJs = () => (pdfjs ??= import('pdfjs-dist/legacy/build/pdf.mjs')
 export interface OpcoesDeExtracao {
   aoAndamento?: (atual: number, total: number) => void
   /** Pastas de cmaps e fontes padrão do pdf.js (necessárias para alguns PDFs com fontes CJK). */
-  recursos?: { cMapUrl: string; standardFontDataUrl: string }
+  recursos?: { pastaDeCmaps: string; pastaDeFontes: string }
 }
+
+/** O pdf.js só aceita pasta terminada em "/"; no Windows, o caminho vem com "\". */
+const pastaParaPdfjs = (pasta: string) => pasta.replace(/[\\/]+$/, '') + '/'
 
 const textoOuNada = (valor: unknown) => {
   const texto = typeof valor === 'string' ? limparTexto(valor).trim() : ''
@@ -57,7 +60,13 @@ export async function extrairPdf(bytes: Uint8Array, opcoes: OpcoesDeExtracao = {
     disableFontFace: true,
     useSystemFonts: false,
     verbosity: 0,
-    ...(opcoes.recursos ? { cMapUrl: opcoes.recursos.cMapUrl, cMapPacked: true, standardFontDataUrl: opcoes.recursos.standardFontDataUrl } : {}),
+    ...(opcoes.recursos
+      ? {
+          cMapUrl: pastaParaPdfjs(opcoes.recursos.pastaDeCmaps),
+          cMapPacked: true,
+          standardFontDataUrl: pastaParaPdfjs(opcoes.recursos.pastaDeFontes),
+        }
+      : {}),
   })
   const pdf = await tarefa.promise
 

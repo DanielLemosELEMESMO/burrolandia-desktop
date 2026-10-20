@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from 'node:fs'
-import { join, sep } from 'node:path'
+import { join } from 'node:path'
 import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, shell } from 'electron'
 import type { Preferencias } from '@nucleo/tipos'
 import { Banco } from './banco'
@@ -35,7 +35,7 @@ const corDeFundo = (preferencias: Preferencias) => FUNDO_POR_TEMA[temaEfetivo(pr
 function recursosDoPdfjs(pastaInterface: string) {
   const empacotados = join(pastaInterface, 'pdfjs')
   const pasta = existsSync(empacotados) ? empacotados : join(app.getAppPath(), 'src/renderer/public/pdfjs')
-  return { cMapUrl: join(pasta, 'cmaps') + sep, standardFontDataUrl: join(pasta, 'standard_fonts') + sep }
+  return { pastaDeCmaps: join(pasta, 'cmaps'), pastaDeFontes: join(pasta, 'standard_fonts') }
 }
 
 /** Só reaproveita a posição antiga se ela ainda cabe numa tela conectada. */

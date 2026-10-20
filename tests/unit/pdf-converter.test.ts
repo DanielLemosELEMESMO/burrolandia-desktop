@@ -80,4 +80,11 @@ describe('converterPdfEmEpub', () => {
     const r = await converterPdfEmEpub(fixture('dom-casmurro-uma-coluna.pdf'), opcoes)
     expect(lerEpub(r.epub!)).toMatchObject({ titulo: 'Dom Casmurro', idioma: 'pt-BR' })
   })
+
+  it('aceita as pastas de recursos do pdf.js como o Windows escreve, terminadas em "\\"', async () => {
+    const pdfjs = join(__dirname, '../../node_modules/pdfjs-dist')
+    const recursos = { pastaDeCmaps: join(pdfjs, 'cmaps') + '\\', pastaDeFontes: join(pdfjs, 'standard_fonts') + '\\' }
+    const r = await converterPdfEmEpub(fixture('dom-casmurro-uma-coluna.pdf'), { ...opcoes, recursos })
+    expect(r).toMatchObject({ temTexto: true, titulo: 'Dom Casmurro' })
+  })
 })
