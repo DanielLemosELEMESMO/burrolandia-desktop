@@ -8,11 +8,12 @@ export interface FontesLocais {
   atkinson: { normal: string; italico: string }
 }
 
-// As mesmas cores de estilos/tokens.css, para a página do livro.
+// As mesmas cores de estilos/tokens.css, para a página do livro: Creme Leitura com Grafite Focado,
+// links em ameixa (ouro na Noite) e a seleção no Lilás Pensativo, clareado para o texto continuar legível.
 const CORES: Record<TemaEfetivo, { pagina: string; tinta: string; acento: string; selecao: string; esquema: string }> = {
-  papel: { pagina: '#fbfaf6', tinta: '#1f2421', acento: '#2d5a4e', selecao: '#cfe1d7', esquema: 'light' },
-  sepia: { pagina: '#f4ecd8', tinta: '#3b2f22', acento: '#6b4423', selecao: '#e3cfa6', esquema: 'light' },
-  noite: { pagina: '#141816', tinta: '#dfe3dd', acento: '#8cc5ae', selecao: '#2f4a3e', esquema: 'dark' },
+  papel: { pagina: '#f6ebdd', tinta: '#1f1f24', acento: '#2f0e2f', selecao: '#dbccdb', esquema: 'light' },
+  sepia: { pagina: '#ebdcc2', tinta: '#3a2a1c', acento: '#2f0e2f', selecao: '#d7c7cb', esquema: 'light' },
+  noite: { pagina: '#1c101c', tinta: '#e8dccb', acento: '#d4af7c', selecao: '#53455e', esquema: 'dark' },
 }
 
 const ALTURA_DA_LINHA = { compacto: 1.35, confortavel: 1.55, amplo: 1.8 }
@@ -79,7 +80,8 @@ export function atributosDoLayout(p: Preferencias, movimentoReduzido: boolean) {
     'max-inline-size': `${LARGURA[p.largura]}px`,
     'max-column-count': p.colunas === 'duas' ? '2' : '1',
     gap: '6%',
-    margin: '56px',
+    // A faixa de cima e a de baixo (com o dock) cabem na margem: nunca cobrem o texto.
+    margin: '72px',
     animated: !movimentoReduzido,
   }
 }

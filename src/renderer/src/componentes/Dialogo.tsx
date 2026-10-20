@@ -15,6 +15,8 @@ interface Props {
   variante?: 'central' | 'lateral-esquerda' | 'lateral-direita'
   /** Mostra o botão de fechar no canto. */
   comFechar?: boolean
+  /** Uma figura ao lado do título (por exemplo, o burro no sucesso da importação). */
+  icone?: ReactNode
   children: ReactNode
 }
 
@@ -26,6 +28,7 @@ export function Dialogo({
   travado,
   variante = 'central',
   comFechar,
+  icone,
   children,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
@@ -41,7 +44,7 @@ export function Dialogo({
   return (
     <dialog
       ref={ref}
-      className={`dialogo dialogo-${variante}`}
+      className={`dialogo dialogo-${variante} superficie-tema`}
       role={alerta ? 'alertdialog' : undefined}
       aria-labelledby={idTitulo}
       onCancel={evento => {
@@ -54,6 +57,11 @@ export function Dialogo({
     >
       <div className="dialogo-conteudo">
         <div className="dialogo-cabeca">
+          {icone && (
+            <span className="dialogo-icone" aria-hidden="true">
+              {icone}
+            </span>
+          )}
           <h2 id={idTitulo}>{titulo}</h2>
           {comFechar && (
             <button type="button" className="botao-icone" aria-label="Fechar" onClick={aoFechar}>

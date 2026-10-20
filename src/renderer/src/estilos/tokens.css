@@ -1,71 +1,121 @@
-/* Burrolândia — papel, tinta e um verde de biblioteca antiga.
-   Contraste conferido por cálculo: texto ≥ 4,5 (o suave fica entre 5,8 e 8), foco ≥ 3, botões ≥ 7. */
+/* Burrolândia — as cinco cores da marca (docs/marca): Ameixa Real, Creme Leitura, Ouro Irreverente,
+   Lilás Pensativo e Grafite Focado. Contraste conferido por cálculo (WCAG 2.2 AA): textos ≥ 5,1;
+   bordas de controle e anel de foco ≥ 3,1. Ouro e lilás nunca são texto sobre fundo claro.
+
+   Duas famílias de superfície:
+   - a da marca (.superficie-escura): ameixa, nas telas de biblioteca e no dock;
+   - a do tema de leitura (data-tema no <html>): leitor, painéis, diálogos e cartões de conforto. */
 
 :root {
-  --serif: 'Literata Variable', Georgia, 'Times New Roman', serif;
-  --sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  --raio: 14px;
+  --ameixa: #2f0e2f;
+  --creme: #f6ebdd;
+  --ouro: #d4af7c;
+  --lilas: #b9a7d9;
+  --grafite: #1f1f24;
+
+  --display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
+  --ui: 'Inter Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --leitura: 'Literata Variable', Georgia, serif;
+
+  --raio: 16px;
   --raio-pequeno: 10px;
   --alvo: 44px;
-  --sombra: 0 1px 2px rgb(0 0 0 / 6%), 0 8px 24px rgb(0 0 0 / 8%);
   --transicao: 0.18s ease;
 }
 
+/* Temas de leitura. "papel" aparece na tela como Creme. */
+
 :root,
 [data-tema='papel'] {
-  color-scheme: light;
-  --fundo: #f6f4ee;
-  --superficie: #fdfcf9;
-  --pagina: #fbfaf6;
-  --tinta: #1f2421;
-  --suave: #5a615c;
-  --linha: #d9d4c7;
-  --linha-forte: #8f948f;
-  --acento: #2d5a4e;
-  --sobre-acento: #ffffff;
-  --acento-suave: #e6eee9;
-  --marca: #14362f;
-  --ouro: #b8955a;
-  --foco: #a8742c;
-  --perigo: #a3423d;
-  --veu: rgb(20 24 22 / 45%);
+  --t-esquema: light;
+  --t-fundo: #f6ebdd;
+  --t-superficie: #fbf5ec;
+  --t-tinta: #1f1f24;
+  --t-suave: #5e4f5a;
+  --t-linha: #e4d5c4;
+  --t-linha-forte: #8a7682;
+  --t-acento: #2f0e2f;
+  --t-sobre-acento: #f6ebdd;
+  --t-acento-suave: #ebe0ee;
+  --t-foco: #6b4fa0;
+  --t-perigo: #a3423d;
+  --t-veu: rgb(47 14 47 / 45%);
+  --t-sombra: 0 1px 2px rgb(47 14 47 / 8%), 0 10px 30px rgb(47 14 47 / 12%);
 }
 
 [data-tema='sepia'] {
-  color-scheme: light;
-  --fundo: #efe5cf;
-  --superficie: #f7efdc;
-  --pagina: #f4ecd8;
-  --tinta: #3b2f22;
-  --suave: #66543f;
-  --linha: #d6c6a4;
-  --linha-forte: #8c7a5f;
-  --acento: #6b4423;
-  --sobre-acento: #ffffff;
-  --acento-suave: #ead9bb;
-  --marca: #4a2f17;
-  --ouro: #a07a3c;
-  --foco: #8a5a17;
-  --perigo: #9a3b33;
-  --veu: rgb(40 28 14 / 40%);
+  --t-esquema: light;
+  --t-fundo: #ebdcc2;
+  --t-superficie: #f3e7d3;
+  --t-tinta: #3a2a1c;
+  --t-suave: #6a5640;
+  --t-linha: #d5c3a3;
+  --t-linha-forte: #806c56;
+  --t-acento: #2f0e2f;
+  --t-sobre-acento: #f6ebdd;
+  --t-acento-suave: #e2d1b6;
+  --t-foco: #6b4fa0;
+  --t-perigo: #9a3b33;
+  --t-veu: rgb(40 28 14 / 40%);
+  --t-sombra: 0 1px 2px rgb(58 42 28 / 10%), 0 10px 30px rgb(58 42 28 / 14%);
 }
 
 [data-tema='noite'] {
+  --t-esquema: dark;
+  --t-fundo: #1c101c;
+  --t-superficie: #2a1a2a;
+  --t-tinta: #e8dccb;
+  --t-suave: #b3a3ae;
+  --t-linha: #3d2b3d;
+  --t-linha-forte: #8a7787;
+  --t-acento: #d4af7c;
+  --t-sobre-acento: #2f0e2f;
+  --t-acento-suave: #3a2840;
+  --t-foco: #d4af7c;
+  --t-perigo: #f2a7a0;
+  --t-veu: rgb(0 0 0 / 60%);
+  --t-sombra: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px rgb(0 0 0 / 45%);
+}
+
+/* As variáveis que os componentes usam. Por padrão, as do tema de leitura. */
+:root,
+.superficie-tema {
+  color-scheme: var(--t-esquema);
+  --fundo: var(--t-fundo);
+  --pagina: var(--t-fundo);
+  --superficie: var(--t-superficie);
+  --tinta: var(--t-tinta);
+  --suave: var(--t-suave);
+  --linha: var(--t-linha);
+  --linha-forte: var(--t-linha-forte);
+  --acento: var(--t-acento);
+  --sobre-acento: var(--t-sobre-acento);
+  --acento-suave: var(--t-acento-suave);
+  --foco: var(--t-foco);
+  --perigo: var(--t-perigo);
+  --veu: var(--t-veu);
+  --sombra: var(--t-sombra);
+}
+
+.superficie-tema {
+  color: var(--tinta);
+}
+
+/* A superfície da marca: creme sobre ameixa, com o ouro nos destaques. */
+.superficie-escura {
   color-scheme: dark;
-  --fundo: #111412;
-  --superficie: #1b201d;
-  --pagina: #141816;
-  --tinta: #dfe3dd;
-  --suave: #a4ada6;
-  --linha: #2f3833;
-  --linha-forte: #6f7a73;
-  --acento: #8cc5ae;
-  --sobre-acento: #0f221b;
-  --acento-suave: #213129;
-  --marca: #8cc5ae;
-  --ouro: #d9b878;
-  --foco: #e0b25e;
-  --perigo: #f0a199;
-  --veu: rgb(0 0 0 / 60%);
-  --sombra: 0 1px 2px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 40%);
+  --fundo: var(--ameixa);
+  --superficie: #3d1a3c;
+  --tinta: var(--creme);
+  --suave: #beadac;
+  --linha: rgb(246 235 221 / 14%);
+  --linha-forte: #937a87;
+  --acento: var(--ouro);
+  --sobre-acento: var(--ameixa);
+  --acento-suave: #45264a;
+  --foco: var(--ouro);
+  --perigo: #f2a7a0;
+  --sombra: 0 1px 2px rgb(0 0 0 / 30%), 0 12px 32px rgb(0 0 0 / 35%);
+  background: var(--fundo);
+  color: var(--tinta);
 }

@@ -5,7 +5,7 @@ import type { Preferencias } from '@nucleo/tipos'
 import { Banco } from './banco'
 import { Biblioteca } from './biblioteca'
 import { converterEmProcessoSeparado } from './conversorPdf'
-import { lerPreferencias, registrarIpc } from './ipc'
+import { lerPreferencias, lerSessao, registrarIpc } from './ipc'
 import { ORIGEM, caminhoDaInterface, registrarEsquema, tratarProtocolo, urlDaInterface } from './protocolo'
 
 // Nome sem acento para a pasta de dados (%APPDATA%\Burrolandia); as janelas mostram "Burrolândia".
@@ -23,13 +23,19 @@ interface EstadoDaJanela {
   maximizada: boolean
 }
 
-// O fundo da janela antes da primeira pintura: o mesmo --fundo dos temas (estilos/tokens.css).
-const FUNDO_POR_TEMA = { papel: '#f6f4ee', sepia: '#efe5cf', noite: '#111412' }
+// O fundo da janela antes da primeira pintura (os mesmos valores de estilos/tokens.css): ameixa nas
+// telas da biblioteca, a cor da página do tema no leitor.
+const AMEIXA = '#2f0e2f'
+const FUNDO_POR_TEMA = { papel: '#f6ebdd', sepia: '#ebdcc2', noite: '#1c101c' }
 
 const temaEfetivo = (preferencias: Preferencias) =>
   preferencias.tema === 'automatico' ? (nativeTheme.shouldUseDarkColors ? 'noite' : 'papel') : preferencias.tema
 
-const corDeFundo = (preferencias: Preferencias) => FUNDO_POR_TEMA[temaEfetivo(preferencias)]
+function aparencia(banco: Banco, biblioteca: Biblioteca) {
+  const tema = temaEfetivo(lerPreferencias(banco))
+  const noLeitor = !!lerSessao(banco, biblioteca).livroAberto
+  return { tema, tela: noLeitor ? 'leitor' : 'marca', fundo: noLeitor ? FUNDO_POR_TEMA[tema] : AMEIXA }
+}
 
 /** Mapas de caracteres e fontes padrão do pdf.js, copiados junto com a interface (pdfjs/). */
 function recursosDoPdfjs(pastaInterface: string) {
@@ -50,9 +56,9 @@ function estadoValido(estado: EstadoDaJanela | undefined): EstadoDaJanela {
   return visivel ? estado : { ...estado, x: undefined, y: undefined }
 }
 
-function criarJanela(banco: Banco) {
+function criarJanela(banco: Banco, biblioteca: Biblioteca) {
   const estado = estadoValido(banco.lerPreferencia<EstadoDaJanela>('janela'))
-  const preferencias = lerPreferencias(banco)
+  const { tema, tela, fundo } = aparencia(banco, biblioteca)
   const janela = new BrowserWindow({
     x: estado.x,
     y: estado.y,
@@ -62,7 +68,7 @@ function criarJanela(banco: Banco) {
     minHeight: 520,
     show: false,
     title: 'Burrolândia',
-    backgroundColor: corDeFundo(preferencias),
+    backgroundColor: fundo,
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -90,8 +96,8 @@ function criarJanela(banco: Banco) {
     if (!daInterface) evento.preventDefault()
   })
 
-  // O tema vai na URL para a primeira pintura já sair na cor certa.
-  void janela.loadURL(`${urlDaInterface()}?tema=${temaEfetivo(preferencias)}`)
+  // O tema e a tela vão na URL para a primeira pintura já sair na cor certa.
+  void janela.loadURL(`${urlDaInterface()}?tema=${tema}&tela=${tela}`)
   return janela
 }
 
@@ -131,13 +137,14 @@ if (!app.requestSingleInstanceLock()) {
     void biblioteca.limparPastasOrfas()
 
     tratarProtocolo(biblioteca, pastaInterface)
-    registrarIpc(banco, biblioteca, preferencias => {
-      for (const janela of BrowserWindow.getAllWindows()) janela.setBackgroundColor(corDeFundo(preferencias))
+    registrarIpc(banco, biblioteca, () => {
+      const { fundo } = aparencia(bancoAberto, biblioteca)
+      for (const janela of BrowserWindow.getAllWindows()) janela.setBackgroundColor(fundo)
     })
-    criarJanela(banco)
+    criarJanela(banco, biblioteca)
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) criarJanela(bancoAberto)
+      if (BrowserWindow.getAllWindows().length === 0) criarJanela(bancoAberto, biblioteca)
     })
   })
 

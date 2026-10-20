@@ -19,6 +19,7 @@ import {
 } from '@nucleo/tipos'
 import { api, urlDoArquivo } from '../api'
 import { AjustesLeitura } from '../componentes/AjustesLeitura'
+import { Dock, type Destino, type Navegacao } from '../componentes/Dock'
 import { Icone } from '../componentes/Icone'
 import { Sumario } from '../componentes/Sumario'
 import { atributosDoLayout, estiloDoLivro, type FontesLocais } from '../leitor/estiloDoLivro'
@@ -123,18 +124,26 @@ function paraLocator(visao: VisaoFoliate, d: DetalheRelocate): Locator {
   }
 }
 
+const ROTULO_DA_ORIGEM: Record<Destino, { curto: string; voltar: string }> = {
+  inicio: { curto: 'Início', voltar: 'Voltar ao início' },
+  biblioteca: { curto: 'Biblioteca', voltar: 'Voltar à biblioteca' },
+}
+
 export function TelaLeitor({
   livro,
+  origem,
+  navegacao,
   preferencias,
   tema,
   aoMudarPreferencias,
-  aoVoltar,
 }: {
   livro: Livro
+  /** De onde você veio: o botão de voltar leva de volta para lá. */
+  origem: Destino
+  navegacao: Navegacao
   preferencias: Preferencias
   tema: TemaEfetivo
   aoMudarPreferencias: (parcial: Partial<Preferencias>) => void
-  aoVoltar: () => void
 }) {
   const host = useRef<HTMLDivElement>(null)
   const visao = useRef<VisaoFoliate | null>(null)
@@ -186,7 +195,7 @@ export function TelaLeitor({
     setBarras(true)
     window.clearTimeout(esconder.current)
     esconder.current = window.setTimeout(() => {
-      if (painelAtual.current || document.querySelector('.leitor-barra:focus-within')) return
+      if (painelAtual.current || document.querySelector('.leitor-barra:focus-within, .leitor-barra:hover')) return
       setBarras(false)
     }, ESPERA_PARA_ESCONDER)
   }, [])
@@ -412,11 +421,20 @@ export function TelaLeitor({
 
   const aoFalharOriginal = useCallback(() => setEstado('erro'), [])
 
-  // Grava a posição antes de pedir a lista da biblioteca, para o progresso aparecer atualizado.
-  const sair = () => {
-    salvarAgora()
-    aoVoltar()
+  // Grava a posição antes de sair, para o progresso aparecer atualizado na biblioteca.
+  const navegacaoDoLeitor: Navegacao = {
+    aoIr: destino => {
+      salvarAgora()
+      navegacao.aoIr(destino)
+    },
+    aoImportar: navegacao.aoImportar,
+    aoBuscar: () => {
+      salvarAgora()
+      navegacao.aoBuscar()
+    },
   }
+  const sair = () => navegacaoDoLeitor.aoIr(origem)
+  const voltarPara = ROTULO_DA_ORIGEM[origem]
 
   /** Troca entre texto adaptado e página original; sincronizar=false quando outro destino já foi escolhido. */
   const mudarModo = (novo: Modo, sincronizar = true) => {
@@ -465,8 +483,9 @@ export function TelaLeitor({
       onMouseMove={mostrarBarras}
     >
       <header className="leitor-barra leitor-topo">
-        <button type="button" className="botao-icone" aria-label="Voltar à biblioteca" onClick={sair}>
+        <button type="button" className="botao-voltar" aria-label={voltarPara.voltar} onClick={sair}>
           <Icone nome="voltar" />
+          <span>{voltarPara.curto}</span>
         </button>
         <div className="leitor-titulo">
           <span className="leitor-nome">{livro.titulo}</span>
@@ -542,7 +561,7 @@ export function TelaLeitor({
           <h2>Não consegui abrir este livro</h2>
           <p>O arquivo pode estar danificado. Você pode removê-lo da biblioteca e adicioná-lo de novo.</p>
           <button type="button" className="botao principal" onClick={sair}>
-            Voltar à biblioteca
+            {voltarPara.voltar}
           </button>
         </div>
       )}
@@ -559,29 +578,32 @@ export function TelaLeitor({
       )}
 
       <footer className="leitor-barra leitor-rodape">
-        <div className="barra-livro" aria-hidden="true">
-          <i style={{ width: `${porcentagem}%` }} />
-        </div>
-        <div className="rodape-textos">
+        <div className="rodape-lado">
           {noOriginal ? (
-            <>
-              <span>{ondeNoOriginal ? `Página ${ondeNoOriginal.rotulo} de ${ondeNoOriginal.total}` : ''}</span>
-              <span className="rodape-zoom">
-                <button type="button" className="botao-icone" aria-label="Diminuir a página" onClick={() => original.current?.zoom(-1)}>
-                  −
-                </button>
-                <button type="button" className="botao-icone" aria-label="Aumentar a página" onClick={() => original.current?.zoom(1)}>
-                  +
-                </button>
-              </span>
-            </>
+            <span>{ondeNoOriginal ? `Página ${ondeNoOriginal.rotulo} de ${ondeNoOriginal.total}` : ''}</span>
           ) : (
             <>
               <span className="rodape-capitulo">{capitulo ?? ''}</span>
-              <span>{onde?.time ? faltaNoCapitulo(onde.time.section) : ''}</span>
+              <span className="rodape-tempo">{onde?.time ? faltaNoCapitulo(onde.time.section) : ''}</span>
             </>
           )}
+        </div>
+        <Dock atual={null} navegacao={navegacaoDoLeitor} naFaixa />
+        <div className="rodape-lado rodape-direita">
+          {noOriginal && (
+            <span className="rodape-zoom">
+              <button type="button" className="botao-icone" aria-label="Diminuir a página" onClick={() => original.current?.zoom(-1)}>
+                −
+              </button>
+              <button type="button" className="botao-icone" aria-label="Aumentar a página" onClick={() => original.current?.zoom(1)}>
+                +
+              </button>
+            </span>
+          )}
           <span>{porcentagem}% do livro</span>
+        </div>
+        <div className="barra-livro rodape-barra" aria-hidden="true">
+          <i style={{ width: `${porcentagem}%` }} />
         </div>
       </footer>
 

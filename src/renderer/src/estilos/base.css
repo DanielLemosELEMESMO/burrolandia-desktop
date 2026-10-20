@@ -13,9 +13,21 @@ body {
 body {
   background: var(--fundo);
   color: var(--tinta);
-  font: 15px/1.55 var(--sans);
+  font: 15px/1.55 var(--ui);
   -webkit-font-smoothing: antialiased;
   transition: background var(--transicao), color var(--transicao);
+}
+
+/* Antes da primeira pintura do React: ameixa nas telas da marca, a cor da página no leitor.
+   Nas telas da marca, a rolagem também fica escura. */
+html[data-tela='marca'] {
+  color-scheme: dark;
+  scrollbar-color: #937a87 transparent;
+}
+
+html[data-tela='marca'] body {
+  background: var(--ameixa);
+  color: var(--creme);
 }
 
 #raiz {
@@ -25,10 +37,10 @@ body {
 h1,
 h2,
 h3 {
-  font-family: var(--serif);
-  font-weight: 500;
+  font-family: var(--display);
+  font-weight: 600;
   letter-spacing: -0.02em;
-  line-height: 1.15;
+  line-height: 1.12;
   margin: 0;
 }
 
@@ -64,6 +76,14 @@ button {
   white-space: nowrap;
 }
 
+/* Sobretítulo: caixa-alta espaçada, como nas pranchas da marca. */
+.sobretitulo {
+  font: 600 12px/1.2 var(--ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--suave);
+}
+
 /* Botões */
 
 .botao {
@@ -72,10 +92,10 @@ button {
   justify-content: center;
   gap: 8px;
   min-height: var(--alvo);
-  padding: 0 18px;
+  padding: 0 20px;
   border: 1px solid var(--linha-forte);
   border-radius: 999px;
-  background: var(--superficie);
+  background: transparent;
   color: var(--tinta);
   font-weight: 600;
   font-size: 15px;
@@ -98,7 +118,7 @@ button {
 }
 
 .botao.principal:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.12);
 }
 
 .botao.perigo {
@@ -124,10 +144,34 @@ button {
   background: var(--acento-suave);
 }
 
+.botao-aa {
+  font: 600 18px/1 var(--display);
+}
+
 .icone {
   width: 22px;
   height: 22px;
   flex: none;
+}
+
+/* Selos: formato do arquivo, onde ele está. */
+.selo-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--linha);
+  color: var(--suave);
+  font: 600 11px/1.5 var(--ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.selo-info .icone {
+  width: 13px;
+  height: 13px;
 }
 
 @media (prefers-reduced-motion: reduce) {

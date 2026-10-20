@@ -1,91 +1,53 @@
-/* Biblioteca */
+/* Início e Biblioteca: telas da marca, em ameixa, com o dock flutuando embaixo. */
 
-.tela-biblioteca {
+.tela {
   min-height: 100%;
 }
 
-.topo {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  height: 72px;
-  padding: 0 clamp(20px, 4vw, 48px);
-  background: color-mix(in srgb, var(--fundo) 92%, transparent);
-  backdrop-filter: blur(10px);
-}
-
-.marca {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--marca);
-  font: 600 20px/1 var(--serif);
-  letter-spacing: -0.01em;
-}
-
-.marca .icone {
-  width: 26px;
-  height: 26px;
-}
-
-.topo-acoes {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.botao-aa {
-  font: 600 18px/1 var(--serif);
-}
-
-.biblioteca {
-  max-width: 1180px;
+.tela-topo,
+.tela-conteudo {
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 8px clamp(20px, 4vw, 48px) 64px;
+  padding-inline: clamp(20px, 4vw, 48px);
+}
+
+.tela-topo {
+  display: flex;
+  align-items: center;
+  height: 84px;
+}
+
+/* Espaço embaixo para o dock nunca cobrir o último livro. */
+.tela-conteudo {
+  padding-top: 4px;
+  padding-bottom: 150px;
 }
 
 .saudacao {
-  font-size: clamp(32px, 4vw, 42px);
-  margin: 12px 0 28px;
+  max-width: 18ch;
+  margin: 14px 0 40px;
+  font-size: clamp(36px, 4.6vw, 56px);
 }
 
-.sobretitulo {
-  font: 600 13px/1.2 var(--sans);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--suave);
-  margin-bottom: 16px;
-}
-
-.contagem {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--acento-suave);
-  color: var(--tinta);
-  letter-spacing: 0;
-}
-
-/* Continuar lendo */
+/* Continuar lendo: um cartão creme (ou da Noite) sobre a ameixa. */
 
 .destaque {
-  margin-bottom: 48px;
+  margin-bottom: 56px;
+}
+
+.destaque .sobretitulo {
+  margin-bottom: 16px;
 }
 
 .destaque-livro {
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: center;
-  gap: clamp(20px, 4vw, 44px);
-  padding: clamp(20px, 3vw, 32px);
-  border-radius: 22px;
-  background: var(--superficie);
-  box-shadow: var(--sombra);
+  gap: clamp(20px, 4vw, 48px);
+  padding: clamp(22px, 3vw, 36px);
+  border-radius: 26px;
+  background: var(--fundo);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 30%);
 }
 
 .destaque-capa {
@@ -96,8 +58,8 @@
 }
 
 .destaque-texto h3 {
-  font-size: clamp(28px, 3.4vw, 40px);
-  margin-bottom: 6px;
+  font-size: clamp(30px, 3.6vw, 44px);
+  margin-bottom: 8px;
 }
 
 .destaque-autor {
@@ -107,9 +69,7 @@
 }
 
 .destaque-onde {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 17px;
+  font: italic 17px/1.4 var(--leitura);
   margin-bottom: 14px;
 }
 
@@ -125,7 +85,7 @@
 }
 
 .destaque-botao {
-  margin-top: 22px;
+  margin-top: 24px;
   min-height: 52px;
   padding: 0 26px;
   font-size: 16px;
@@ -146,16 +106,50 @@
   background: var(--acento);
 }
 
-/* Estante */
+/* Seções */
 
+.secao-cabeca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.botao-texto {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: var(--alvo);
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--acento);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.botao-texto:hover {
+  background: var(--acento-suave);
+}
+
+.botao-texto .icone {
+  width: 18px;
+  height: 18px;
+}
+
+.fileira,
 .grade {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 32px 24px;
+  gap: 36px 26px;
 }
+
+/* Cartão de livro */
 
 .cartao {
   position: relative;
@@ -168,8 +162,14 @@
   padding: 0;
   border: 0;
   background: none;
+  color: inherit;
   text-align: left;
-  border-radius: 8px;
+  border-radius: 10px;
+}
+
+.cartao-capa {
+  position: relative;
+  display: block;
 }
 
 .cartao-abrir .capa {
@@ -178,7 +178,19 @@
 
 .cartao-abrir:hover .capa {
   transform: translateY(-4px);
-  box-shadow: 0 2px 4px rgb(0 0 0 / 10%), 0 16px 32px rgb(0 0 0 / 16%);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 20%), 0 18px 34px rgb(0 0 0 / 34%);
+}
+
+.selo-formato {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgb(31 31 36 / 80%);
+  color: var(--creme);
+  font: 700 10px/1.5 var(--ui);
+  letter-spacing: 0.08em;
 }
 
 .cartao-titulo {
@@ -202,28 +214,292 @@
 }
 
 .cartao-progresso {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 8px;
 }
 
-.cartao-titulo,
-.cartao-autor {
-  padding-right: 40px;
+.cartao-progresso .barra-livro {
+  flex: 1;
+}
+
+.cartao-porcentagem {
+  color: var(--suave);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cartao-quando {
+  margin-top: 4px;
+  color: var(--suave);
+  font-size: 12px;
+}
+
+/* O "mais ações" fica ao lado do título, logo abaixo da capa (margem em % é relativa à largura: 2:3). */
+.grade .cartao-titulo {
+  padding-right: 34px;
 }
 
 .cartao .menu-de-acoes {
   position: absolute;
+  top: 0;
   right: -10px;
-  bottom: -8px;
+  margin-top: calc(150% + 2px);
 }
 
-.cartao .menu-de-acoes > .botao-icone {
+/* Espaço para o selo do formato não cobrir o título da capa tipográfica. */
+.cartao-capa .capa-tipografica {
+  padding-top: 38px;
+}
+
+.menu-de-acoes > .botao-icone {
   color: var(--suave);
 }
 
-.cartao .menu-de-acoes > .botao-icone:hover,
-.cartao .menu-de-acoes > .botao-icone[aria-expanded='true'] {
+.menu-de-acoes > .botao-icone:hover,
+.menu-de-acoes > .botao-icone[aria-expanded='true'] {
   color: var(--tinta);
+}
+
+/* Biblioteca: cabeça e ferramentas */
+
+.biblioteca-cabeca {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 24px;
+  margin: 12px 0 24px;
+}
+
+.biblioteca-cabeca h1 {
+  font-size: clamp(34px, 4vw, 48px);
+}
+
+.contagem {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 6px;
+  padding: 2px 11px;
+  border-radius: 999px;
+  background: var(--acento-suave);
+  color: var(--tinta);
+  font: 600 15px/1.5 var(--ui);
+  letter-spacing: 0;
+}
+
+.onde-estao {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--suave);
+  font-size: 14px;
+}
+
+.onde-estao .icone {
+  width: 18px;
+  height: 18px;
+}
+
+.ferramentas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+  padding: 10px;
+  border-radius: 22px;
+  background: var(--superficie);
+}
+
+.busca {
+  flex: 1 1 260px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--alvo);
+  padding: 0 16px;
+  border: 1px solid var(--linha-forte);
+  border-radius: 999px;
+  background: var(--fundo);
+  color: var(--suave);
+}
+
+.busca:has(input:focus-visible) {
+  outline: 3px solid var(--foco);
+  outline-offset: 2px;
+}
+
+.busca .icone {
+  width: 19px;
+  height: 19px;
+}
+
+.busca input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--tinta);
+  font-size: 15px;
+}
+
+.busca input::placeholder {
+  color: var(--suave);
+  opacity: 1;
+}
+
+.filtro {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--linha-forte);
+  border-radius: 999px;
+}
+
+.filtro .segmento {
+  flex-direction: row;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.ordem {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--suave);
+  font-size: 14px;
+}
+
+.ordem select {
+  min-height: var(--alvo);
+  padding: 0 38px 0 16px;
+  border: 1px solid var(--linha-forte);
+  border-radius: 999px;
+  background: var(--fundo) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23beadac' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center / 16px;
+  color: var(--tinta);
+  font-weight: 600;
+  appearance: none;
+  cursor: pointer;
+}
+
+.vista {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.vista .botao-icone {
+  border-radius: 12px;
+  color: var(--suave);
+}
+
+.vista .botao-icone[aria-pressed='true'] {
+  background: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.sem-resultado {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  padding: 28px;
+  border-radius: 22px;
+  background: var(--superficie);
+  color: var(--suave);
+  font-size: 16px;
+}
+
+/* Lista: uma linha por livro, para arrumar a estante. */
+
+.lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.linha {
+  position: relative;
+  border-radius: 18px;
+  background: var(--superficie);
+}
+
+.linha-abrir {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 2.4fr) minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 1.5fr) auto;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  padding: 10px 64px 10px 12px;
+  border: 0;
+  border-radius: 18px;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+.linha-abrir:hover {
+  background: var(--acento-suave);
+}
+
+.linha .capa-pequena {
+  width: 44px;
+}
+
+.linha-nome {
+  display: grid;
+  min-width: 0;
+}
+
+.linha-nome .cartao-titulo {
+  margin-top: 0;
+}
+
+.linha-selos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.linha-progresso .cartao-progresso,
+.linha-progresso .cartao-quando,
+.linha-quando {
+  margin-top: 0;
+}
+
+.linha .menu-de-acoes {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+}
+
+@media (max-width: 1100px) {
+  .linha-abrir {
+    grid-template-columns: 44px minmax(0, 2.4fr) minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 1.5fr);
+  }
+
+  .linha-onde {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .linha-abrir {
+    grid-template-columns: 44px minmax(0, 2.4fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
+  }
+
+  .linha-quando {
+    display: none;
+  }
 }
 
 /* Capas */
@@ -237,7 +513,7 @@
   object-fit: cover;
   border-radius: 3px 8px 8px 3px;
   background: var(--linha);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 12%), 0 8px 18px rgb(0 0 0 / 12%);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 18%), 0 10px 22px rgb(0 0 0 / 24%);
 }
 
 .capa-grande {
@@ -255,13 +531,13 @@
   justify-content: space-between;
   /* Padding em px: porcentagem seria relativa ao contêiner, não à capa. */
   padding: 18px 14px;
-  color: #fbfbf7;
+  color: #fbf5ec;
   overflow: hidden;
-  background-image: linear-gradient(90deg, rgb(0 0 0 / 18%) 0, rgb(0 0 0 / 0%) 7%);
+  background-image: linear-gradient(90deg, rgb(0 0 0 / 20%) 0, rgb(0 0 0 / 0%) 7%);
 }
 
 .capa-titulo {
-  font: 500 18px/1.15 var(--serif);
+  font: 600 18px/1.15 var(--display);
   letter-spacing: -0.01em;
   display: -webkit-box;
   -webkit-line-clamp: 6;
@@ -269,11 +545,14 @@
   overflow: hidden;
 }
 
+/* Um fio de ouro separa o autor, como nas capas da marca. */
 .capa-autor {
-  font-size: 12px;
-  letter-spacing: 0.08em;
+  padding-top: 8px;
+  border-top: 2px solid var(--ouro);
+  font-size: 11px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  opacity: 0.9;
+  opacity: 0.92;
 }
 
 .capa-grande.capa-tipografica {
@@ -289,7 +568,7 @@
 }
 
 .capa-pequena .capa-titulo {
-  font-size: 12px;
+  font-size: 11px;
   -webkit-line-clamp: 3;
 }
 
@@ -297,30 +576,30 @@
   display: none;
 }
 
-/* Biblioteca vazia */
+/* Biblioteca vazia: o burro de óculos. */
 
 .vazio {
-  max-width: 520px;
-  margin: 8vh auto 0;
+  max-width: 560px;
+  margin: 2vh auto 0;
   text-align: center;
   display: grid;
   justify-items: center;
   gap: 14px;
 }
 
-.vazio-icone {
-  width: 64px;
-  height: 64px;
-  color: var(--acento);
-  stroke-width: 1.4;
+.vazio-burro {
+  width: 156px;
+  height: 156px;
+  margin-bottom: 6px;
+  filter: drop-shadow(0 10px 14px rgb(0 0 0 / 18%));
 }
 
 .vazio h1 {
-  font-size: 40px;
+  font-size: clamp(34px, 4.4vw, 48px);
 }
 
 .vazio h2 {
-  font: 600 20px/1.3 var(--sans);
+  font: 600 20px/1.3 var(--ui);
   letter-spacing: 0;
 }
 
@@ -338,20 +617,21 @@
   z-index: 50;
   display: grid;
   place-items: center;
-  border: 3px dashed var(--acento);
-  border-radius: 24px;
-  background: color-mix(in srgb, var(--fundo) 86%, transparent);
+  border: 3px dashed var(--ouro);
+  border-radius: 28px;
+  background: rgb(47 14 47 / 86%);
   backdrop-filter: blur(4px);
   pointer-events: none;
   text-align: center;
-  font: 500 24px/1.3 var(--serif);
-  color: var(--acento);
+  font: 600 26px/1.3 var(--display);
+  color: var(--creme);
 }
 
 .soltar .icone {
   width: 48px;
   height: 48px;
   margin-bottom: 8px;
+  color: var(--ouro);
 }
 
 @media (max-width: 760px) {

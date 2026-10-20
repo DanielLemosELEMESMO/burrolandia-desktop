@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import { gravarLivrosDeTeste } from '../fixtures/livros'
 import type { ApiBurrolandia } from '../../src/preload/api'
-import { abrirApp, escolherArquivo, novaPastaDeDados } from './app'
+import { abrirApp, escolherArquivo, irPara, novaPastaDeDados } from './app'
 
 test('adiciona um EPUB, lê e reabre exatamente onde parou', async () => {
   const dados = novaPastaDeDados()
@@ -13,7 +13,7 @@ test('adiciona um EPUB, lê e reabre exatamente onde parou', async () => {
   await expect(janela.getByText('Sua biblioteca está vazia')).toBeVisible()
 
   await escolherArquivo(app, livros.domCasmurro)
-  await janela.getByRole('button', { name: 'Adicionar livro' }).first().click()
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
   const fim = janela.getByRole('dialog', { name: 'Seu livro está na biblioteca' })
   await expect(fim).toBeVisible()
   await expect(fim.getByText('Dom Casmurro')).toBeVisible()
@@ -44,19 +44,23 @@ test('a biblioteca mostra o livro em "Continuar lendo" depois da leitura', async
   const { app, janela } = await abrirApp(dados)
 
   await escolherArquivo(app, livros.memorias)
-  await janela.getByRole('button', { name: 'Adicionar livro' }).first().click()
-  await janela.getByRole('button', { name: 'Voltar à biblioteca' }).click()
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
+  await janela.getByRole('button', { name: 'Agora não' }).click()
   await escolherArquivo(app, livros.domCasmurro)
-  await janela.getByRole('button', { name: 'Adicionar livro' }).first().click()
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
   await janela
     .getByRole('dialog', { name: 'Seu livro está na biblioteca' })
     .getByRole('button', { name: 'Começar a ler' })
     .click()
   await expect(janela.getByRole('main', { name: 'Lendo Dom Casmurro' })).toHaveAttribute('data-cfi', /^epubcfi/)
 
-  await janela.getByRole('button', { name: 'Voltar à biblioteca' }).click()
+  // O livro foi aberto pelo Início: voltar leva ao Início.
+  await janela.getByRole('button', { name: 'Voltar ao início' }).click()
   const continuar = janela.getByRole('region', { name: 'Continuar lendo' })
   await expect(continuar.getByRole('heading', { name: 'Dom Casmurro' })).toBeVisible()
+  await expect(janela.getByRole('list', { name: 'Na sua estante' }).getByRole('listitem')).toHaveCount(1)
+
+  await irPara(janela, 'Biblioteca')
   await expect(janela.getByRole('list', { name: 'Sua biblioteca' }).getByRole('listitem')).toHaveCount(2)
   await app.close()
 })
@@ -68,7 +72,7 @@ test('recusa um arquivo que não é livro e explica o porquê', async () => {
   const { app, janela } = await abrirApp(dados)
 
   await escolherArquivo(app, texto)
-  await janela.getByRole('button', { name: 'Adicionar livro' }).first().click()
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
   const aviso = janela.getByRole('alertdialog', { name: 'Não deu para adicionar este arquivo' })
   await expect(aviso).toBeVisible()
   await expect(aviso).toContainText('EPUB e PDF')
@@ -83,9 +87,10 @@ test('remove um livro depois de confirmar', async () => {
   const { app, janela } = await abrirApp(dados)
 
   await escolherArquivo(app, livros.memorias)
-  await janela.getByRole('button', { name: 'Adicionar livro' }).first().click()
-  await janela.getByRole('button', { name: 'Voltar à biblioteca' }).click()
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
+  await janela.getByRole('button', { name: 'Agora não' }).click()
 
+  await irPara(janela, 'Biblioteca')
   await janela.getByRole('button', { name: 'Mais ações para Memórias Póstumas de Brás Cubas' }).click()
   await janela.getByRole('menuitem', { name: 'Remover da biblioteca' }).click()
   const confirmar = janela.getByRole('alertdialog', { name: 'Remover este livro?' })
@@ -114,8 +119,8 @@ test('uma posição salva que não existe mais no livro não deixa a tela em bra
   const { app, janela } = await abrirApp(dados)
 
   await escolherArquivo(app, livros.domCasmurro)
-  await janela.getByRole('button', { name: 'Adicionar livro' }).first().click()
-  await janela.getByRole('button', { name: 'Voltar à biblioteca' }).click()
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
+  await janela.getByRole('button', { name: 'Agora não' }).click()
   await janela.evaluate(async () => {
     const { burrolandia } = globalThis as unknown as { burrolandia: ApiBurrolandia }
     const [livro] = await burrolandia.biblioteca.listar()
@@ -125,6 +130,7 @@ test('uma posição salva que não existe mais no livro não deixa a tela em bra
       locations: { cfi: 'epubcfi(/6/98!/4/2/1:0)', totalProgression: 0.6 },
     })
   })
+  await irPara(janela, 'Biblioteca')
   await janela.getByRole('button', { name: /Dom Casmurro/ }).first().click()
   await expect(janela.getByRole('main', { name: 'Lendo Dom Casmurro' })).toHaveAttribute('data-cfi', /^epubcfi/)
   await app.close()

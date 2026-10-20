@@ -12,6 +12,15 @@ const CAMINHOS = {
   livro: 'M12 6.5C10 5 7.5 4.5 4 4.5v13c3.5 0 6 .5 8 2 2-1.5 4.5-2 8-2v-13c-3.5 0-6 .5-8 2zM12 6.5v13',
   pagina: 'M7 3h7l5 5v13H7zM14 3v5h5',
   aviso: 'M12 8v5M12 16.5h.01M10.3 3.9L2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+  casa: 'M4 10.5L12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z',
+  estante: 'M4.5 4h3.5v16H4.5zM10 4h3.5v16H10zM15.6 6.2l3.3-.9 3.6 14-3.3.9z',
+  lupa: 'M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.3 15.3L20 20',
+  ajustes: 'M4 7h9M17 7h3M15 5v4M4 17h3M11 17h9M9 15v4',
+  grade: 'M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z',
+  lista: 'M4 5h3v3H4zM4 10.5h3v3H4zM4 16h3v3H4zM10.5 6.5H20M10.5 12H20M10.5 17.5H20',
+  computador: 'M4 5h16v11H4zM9 20h6M12 16v4',
+  recolher: 'M6 9l6 6 6-6',
+  mostrar: 'M6 15l6-6 6 6',
 } as const
 
 export type NomeDoIcone = keyof typeof CAMINHOS

@@ -29,3 +29,8 @@ export async function escolherArquivo(app: ElectronApplication, caminho: string)
     dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [arquivo] })) as typeof dialog.showOpenDialog
   }, caminho)
 }
+
+/** Vai a uma tela pelo dock (a navegação principal). */
+export async function irPara(janela: Page, destino: 'Início' | 'Biblioteca') {
+  await janela.getByRole('navigation', { name: 'Navegação principal' }).getByRole('button', { name: destino, exact: true }).click()
+}

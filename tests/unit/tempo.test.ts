@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { duracaoEmPalavras, faltaNoCapitulo, saudacao } from '@nucleo/tempo'
+import { duracaoEmPalavras, faltaNoCapitulo, haQuantoTempo, saudacao } from '@nucleo/tempo'
 
 describe('duracaoEmPalavras', () => {
   it('diz "menos de 1 minuto" abaixo de um minuto', () => {
@@ -54,5 +54,40 @@ describe('saudacao', () => {
   it('dá boa noite à noite e de madrugada', () => {
     expect(saudacao(as(18))).toBe('Boa noite')
     expect(saudacao(as(2))).toBe('Boa noite')
+  })
+})
+
+describe('haQuantoTempo', () => {
+  const agora = new Date(2026, 9, 20, 15, 0)
+  const antes = (minutos: number) => new Date(agora.getTime() - minutos * 60_000)
+
+  it('diz "agora há pouco" no primeiro minuto', () => {
+    expect(haQuantoTempo(antes(0.5), agora)).toBe('agora há pouco')
+  })
+
+  it('conta minutos e horas, com singular e plural', () => {
+    expect(haQuantoTempo(antes(1), agora)).toBe('há 1 minuto')
+    expect(haQuantoTempo(antes(25), agora)).toBe('há 25 minutos')
+    expect(haQuantoTempo(antes(60), agora)).toBe('há 1 hora')
+    expect(haQuantoTempo(antes(5 * 60), agora)).toBe('há 5 horas')
+  })
+
+  it('diz "ontem" para o dia anterior, e conta os dias da semana', () => {
+    expect(haQuantoTempo(new Date(2026, 9, 19, 9, 0), agora)).toBe('ontem')
+    expect(haQuantoTempo(new Date(2026, 9, 17, 20, 0), agora)).toBe('há 3 dias')
+  })
+
+  it('conta semanas no último mês', () => {
+    expect(haQuantoTempo(new Date(2026, 9, 12, 10, 0), agora)).toBe('há 1 semana')
+    expect(haQuantoTempo(new Date(2026, 8, 28, 10, 0), agora)).toBe('há 3 semanas')
+  })
+
+  it('mais antigo que isso, diz a data', () => {
+    expect(haQuantoTempo(new Date(2026, 2, 12, 10, 0), agora)).toBe('em 12 de março')
+    expect(haQuantoTempo(new Date(2025, 11, 1, 10, 0), agora)).toBe('em 1 de dezembro de 2025')
+  })
+
+  it('aceita a data guardada como texto ISO', () => {
+    expect(haQuantoTempo(antes(3).toISOString(), agora)).toBe('há 3 minutos')
   })
 })

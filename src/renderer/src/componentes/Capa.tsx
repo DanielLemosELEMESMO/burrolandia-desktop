@@ -4,7 +4,8 @@ import { useState } from 'react'
 import type { Livro } from '@nucleo/tipos'
 import { urlDoArquivo } from '../api'
 
-const TONS = ['#7d5a3c', '#365f6e', '#5a6f3d', '#7a4a5e', '#4b5a83', '#8a6a2f', '#2d5a4e', '#6b4a7a']
+// Tons fechados que conversam com a ameixa; o título creme fica acima de 5,8:1 em todos.
+const TONS = ['#5b2a55', '#7a4a2e', '#34466b', '#4d5a36', '#7b3b46', '#2f5552', '#5a4a7a', '#7a5a2a']
 
 const tomDoTitulo = (titulo: string) => {
   let soma = 0

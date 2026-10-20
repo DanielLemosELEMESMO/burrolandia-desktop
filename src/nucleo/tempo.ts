@@ -26,3 +26,22 @@ export function saudacao(agora: Date): string {
   if (hora >= 12 && hora < 18) return 'Boa tarde'
   return 'Boa noite'
 }
+
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+const inicioDoDia = (data: Date) => new Date(data.getFullYear(), data.getMonth(), data.getDate()).getTime()
+
+/** "agora há pouco", "há 5 minutos", "ontem", "há 3 dias", "há 2 semanas", "em 12 de março". */
+export function haQuantoTempo(quando: Date | string, agora = new Date()): string {
+  const data = typeof quando === 'string' ? new Date(quando) : quando
+  const minutos = (agora.getTime() - data.getTime()) / 60_000
+  if (minutos < 1) return 'agora há pouco'
+  if (minutos < 60) return `há ${plural(Math.floor(minutos), 'minuto', 'minutos')}`
+  if (minutos < 24 * 60) return `há ${plural(Math.floor(minutos / 60), 'hora', 'horas')}`
+  // Dias do calendário, não blocos de 24 horas (round absorve a troca de horário de verão).
+  const dias = Math.round((inicioDoDia(agora) - inicioDoDia(data)) / 86_400_000)
+  if (dias <= 1) return 'ontem'
+  if (dias < 7) return `há ${dias} dias`
+  if (dias < 30) return `há ${plural(Math.floor(dias / 7), 'semana', 'semanas')}`
+  const ano = data.getFullYear() === agora.getFullYear() ? '' : ` de ${data.getFullYear()}`
+  return `em ${data.getDate()} de ${MESES[data.getMonth()]}${ano}`
+}

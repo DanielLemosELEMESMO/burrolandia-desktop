@@ -1,112 +1,118 @@
-// A biblioteca: ao abrir, o livro que você está lendo vem primeiro, a um clique.
+// A biblioteca inteira: busca, ordem, formato e duas vistas — grade para passear, lista para arrumar.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Livro } from '@nucleo/tipos'
-import { saudacao } from '@nucleo/tempo'
+import { organizarLivros, type FiltroDeFormato, type Ordem } from '@nucleo/organizar'
+import { haQuantoTempo } from '@nucleo/tempo'
 import { api } from '../api'
 import { Capa } from '../componentes/Capa'
 import { Dialogo } from '../componentes/Dialogo'
+import { EstadoVazio } from '../componentes/EstadoVazio'
 import { Icone } from '../componentes/Icone'
-import { DialogosDeImportacao, useImportacao } from '../componentes/Importacao'
+import { Assinatura } from '../componentes/Marca'
 import { MenuDeAcoes } from '../componentes/MenuDeAcoes'
+
+type Vista = 'grade' | 'lista'
+
+const ORDENS: { valor: Ordem; rotulo: string }[] = [
+  { valor: 'recentes', rotulo: 'Mais recentes' },
+  { valor: 'titulo', rotulo: 'Título' },
+  { valor: 'autor', rotulo: 'Autor' },
+  { valor: 'progresso', rotulo: 'Progresso' },
+]
+
+const FORMATOS: { valor: FiltroDeFormato; rotulo: string }[] = [
+  { valor: 'todos', rotulo: 'Todos' },
+  { valor: 'epub', rotulo: 'EPUB' },
+  { valor: 'pdf', rotulo: 'PDF' },
+]
 
 const porcentagem = (livro: Livro) => Math.round(livro.progresso * 100)
 const autores = (livro: Livro) => livro.autores.join(', ')
+const ultimaLeitura = (livro: Livro) =>
+  livro.abertoEm ? `Lido ${haQuantoTempo(livro.abertoEm)}` : `Adicionado ${haQuantoTempo(livro.adicionadoEm)}`
 
-/** Continuar lendo: o aberto mais recentemente que ainda não terminou. Senão, o mais novo para começar. */
-function escolherDestaque(livros: Livro[]): { livro: Livro; continuar: boolean } | null {
-  const emLeitura = livros.find(l => l.abertoEm && l.progresso < 0.995)
-  if (emLeitura) return { livro: emLeitura, continuar: true }
-  const nuncaAbertos = livros.filter(l => !l.abertoEm).sort((a, b) => b.adicionadoEm.localeCompare(a.adicionadoEm))
-  return nuncaAbertos[0] ? { livro: nuncaAbertos[0], continuar: false } : null
+/** O que o arquivo virou: EPUB, PDF com texto adaptado, ou PDF que só abre como foi impresso. */
+const comoLe = (livro: Livro) =>
+  livro.formatoOriginal === 'epub' ? null : livro.arquivoLeitura ? 'Texto adaptado' : 'Digitalizado'
+
+// Ordem e vista ficam lembradas neste computador; a busca e o filtro, não.
+function lembrado<T extends string>(chave: string, opcoes: readonly T[], padrao: T): T {
+  try {
+    const valor = localStorage.getItem(`burrolandia:${chave}`) as T | null
+    return valor && opcoes.includes(valor) ? valor : padrao
+  } catch {
+    return padrao
+  }
 }
 
-function Destaque({ livro, continuar, aoAbrir }: { livro: Livro; continuar: boolean; aoAbrir: () => void }) {
+function lembrar(chave: string, valor: string) {
+  try {
+    localStorage.setItem(`burrolandia:${chave}`, valor)
+  } catch {
+    // Sem armazenamento local, a escolha só não fica lembrada.
+  }
+}
+
+function Progresso({ livro }: { livro: Livro }) {
+  if (livro.progresso <= 0) return null
   return (
-    <section className="destaque" aria-labelledby="titulo-destaque">
-      <h2 id="titulo-destaque" className="sobretitulo">
-        {continuar ? 'Continuar lendo' : 'Para começar'}
-      </h2>
-      <div className="destaque-livro">
-        <button type="button" className="destaque-capa" onClick={aoAbrir} tabIndex={-1} aria-hidden="true">
-          <Capa livro={livro} tamanho="grande" />
-        </button>
-        <div className="destaque-texto">
-          <h3>{livro.titulo}</h3>
-          {livro.autores.length > 0 && <p className="destaque-autor">{autores(livro)}</p>}
-          {continuar && (
-            <>
-              {livro.posicao?.title && <p className="destaque-onde">Você está em “{livro.posicao.title}”</p>}
-              <div className="barra-livro" aria-hidden="true">
-                <i style={{ width: `${Math.max(2, porcentagem(livro))}%` }} />
-              </div>
-              <p className="destaque-quanto">{porcentagem(livro)}% lido</p>
-            </>
-          )}
-          <button type="button" className="botao principal destaque-botao" onClick={aoAbrir}>
-            <Icone nome="livro" />
-            {continuar ? 'Continuar a leitura' : 'Começar a ler'}
-          </button>
-        </div>
-      </div>
-    </section>
+    <span className="cartao-progresso">
+      <span className="barra-livro" aria-hidden="true">
+        <i style={{ width: `${Math.max(2, porcentagem(livro))}%` }} />
+      </span>
+      <span className="cartao-porcentagem">{porcentagem(livro)}% lido</span>
+    </span>
   )
 }
 
 export function TelaBiblioteca({
   livros,
+  pedidoDeBusca,
   aoAbrir,
   aoMudarBiblioteca,
-  abrirAjustes,
+  aoImportar,
 }: {
   livros: Livro[]
+  pedidoDeBusca: number
   aoAbrir: (id: string) => void
   aoMudarBiblioteca: () => void
-  abrirAjustes: () => void
+  aoImportar: () => void
 }) {
-  const importacao = useImportacao(aoMudarBiblioteca)
+  const [busca, setBusca] = useState('')
+  const [formato, setFormato] = useState<FiltroDeFormato>('todos')
+  const [ordem, setOrdem] = useState<Ordem>(() => lembrado('ordem', ORDENS.map(o => o.valor), 'recentes'))
+  const [vista, setVista] = useState<Vista>(() => lembrado('vista', ['grade', 'lista'] as const, 'grade'))
   const [removendo, setRemovendo] = useState<Livro | null>(null)
-  const [arrastando, setArrastando] = useState(false)
-  const destaque = escolherDestaque(livros)
+  const campoDeBusca = useRef<HTMLInputElement>(null)
+  const visiveis = organizarLivros(livros, { busca, ordem, formato })
 
-  // Arrastar um arquivo para qualquer lugar da janela.
   useEffect(() => {
-    let profundidade = 0
-    const temArquivo = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
-    const entrar = (e: DragEvent) => {
-      if (!temArquivo(e)) return
+    if (pedidoDeBusca) campoDeBusca.current?.focus()
+  }, [pedidoDeBusca])
+
+  // "/" ou Ctrl+F levam à busca, como nos navegadores.
+  useEffect(() => {
+    const aoTeclar = (e: KeyboardEvent) => {
+      const digitando = (e.target as Element | null)?.closest?.('input, select, textarea')
+      const atalho = (e.key === '/' && !digitando) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f')
+      if (!atalho || document.querySelector('dialog[open]')) return
       e.preventDefault()
-      profundidade++
-      setArrastando(true)
+      campoDeBusca.current?.focus()
     }
-    const sobre = (e: DragEvent) => {
-      if (temArquivo(e)) e.preventDefault()
-    }
-    const sair = () => {
-      profundidade = Math.max(0, profundidade - 1)
-      if (!profundidade) setArrastando(false)
-    }
-    const soltar = (e: DragEvent) => {
-      e.preventDefault()
-      profundidade = 0
-      setArrastando(false)
-      const arquivos = e.dataTransfer?.files
-      const arquivo = arquivos?.[0]
-      if (!arquivo) return
-      const aviso = arquivos.length > 1 ? 'Os livros entram um por vez: adicionei só o primeiro arquivo.' : undefined
-      void importacao.importar(api.biblioteca.caminhoDoArquivo(arquivo), aviso)
-    }
-    window.addEventListener('dragenter', entrar)
-    window.addEventListener('dragover', sobre)
-    window.addEventListener('dragleave', sair)
-    window.addEventListener('drop', soltar)
-    return () => {
-      window.removeEventListener('dragenter', entrar)
-      window.removeEventListener('dragover', sobre)
-      window.removeEventListener('dragleave', sair)
-      window.removeEventListener('drop', soltar)
-    }
-  }, [importacao.importar])
+    window.addEventListener('keydown', aoTeclar)
+    return () => window.removeEventListener('keydown', aoTeclar)
+  }, [])
+
+  const mudarOrdem = (valor: Ordem) => {
+    setOrdem(valor)
+    lembrar('ordem', valor)
+  }
+
+  const mudarVista = (valor: Vista) => {
+    setVista(valor)
+    lembrar('vista', valor)
+  }
 
   const remover = async () => {
     if (!removendo) return
@@ -115,91 +121,156 @@ export function TelaBiblioteca({
     aoMudarBiblioteca()
   }
 
-  return (
-    <div className="tela-biblioteca">
-      <header className="topo">
-        <div className="marca">
-          <Icone nome="livro" />
-          <span>Burrolândia</span>
-        </div>
-        <div className="topo-acoes">
-          <button type="button" className="botao-icone botao-aa" aria-label="Ajustes de leitura" onClick={abrirAjustes}>
-            Aa
-          </button>
-          <button type="button" className="botao principal" onClick={() => void importacao.adicionar()}>
-            <Icone nome="mais" />
-            Adicionar livro
-          </button>
-        </div>
-      </header>
+  const acoes = (livro: Livro) => (
+    <MenuDeAcoes
+      rotulo={`Mais ações para ${livro.titulo}`}
+      acoes={[{ rotulo: 'Remover da biblioteca', perigosa: true, aoEscolher: () => setRemovendo(livro) }]}
+    />
+  )
 
-      <main className="biblioteca" aria-label="Biblioteca">
+  return (
+    <div className="tela superficie-escura">
+      <header className="tela-topo">
+        <Assinatura />
+      </header>
+      <main className="tela-conteudo" aria-label="Biblioteca">
         {livros.length === 0 ? (
-          <div className="vazio">
-            <Icone nome="livro" className="vazio-icone" />
-            <h1>{saudacao(new Date())}.</h1>
-            <h2>Sua biblioteca está vazia</h2>
-            <p>Adicione um EPUB ou PDF que você tenha no computador. Você também pode arrastar o arquivo para esta janela.</p>
-            <button type="button" className="botao principal" onClick={() => void importacao.adicionar()}>
-              <Icone nome="mais" />
-              Adicionar livro
-            </button>
-          </div>
+          <EstadoVazio titulo="Sua biblioteca" aoImportar={aoImportar} />
         ) : (
           <>
-            <h1 className="saudacao">{saudacao(new Date())}.</h1>
-            {destaque && (
-              <Destaque livro={destaque.livro} continuar={destaque.continuar} aoAbrir={() => aoAbrir(destaque.livro.id)} />
-            )}
-            <section className="estante" aria-labelledby="titulo-estante">
-              <h2 id="titulo-estante" className="sobretitulo">
+            <div className="biblioteca-cabeca">
+              <h1>
                 Sua biblioteca <span className="contagem">{livros.length}</span>
-              </h2>
+              </h1>
+              <p className="onde-estao">
+                <Icone nome="computador" />
+                Todos os livros estão guardados neste computador.
+              </p>
+            </div>
+
+            <div className="ferramentas">
+              <label className="busca">
+                <Icone nome="lupa" />
+                <input
+                  ref={campoDeBusca}
+                  type="search"
+                  value={busca}
+                  onChange={e => setBusca(e.target.value)}
+                  placeholder="Buscar por título ou autor"
+                  aria-label="Buscar na biblioteca"
+                />
+              </label>
+              <div className="filtro" role="radiogroup" aria-label="Formato">
+                {FORMATOS.map(opcao => (
+                  <label key={opcao.valor} className="segmento">
+                    <input
+                      type="radio"
+                      name="formato"
+                      checked={formato === opcao.valor}
+                      onChange={() => setFormato(opcao.valor)}
+                    />
+                    <span>{opcao.rotulo}</span>
+                  </label>
+                ))}
+              </div>
+              <label className="ordem">
+                <span>Ordenar por</span>
+                <select value={ordem} onChange={e => mudarOrdem(e.target.value as Ordem)}>
+                  {ORDENS.map(opcao => (
+                    <option key={opcao.valor} value={opcao.valor}>
+                      {opcao.rotulo}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="vista" role="group" aria-label="Exibição">
+                <button
+                  type="button"
+                  className="botao-icone"
+                  aria-label="Ver em grade"
+                  aria-pressed={vista === 'grade'}
+                  onClick={() => mudarVista('grade')}
+                >
+                  <Icone nome="grade" />
+                </button>
+                <button
+                  type="button"
+                  className="botao-icone"
+                  aria-label="Ver em lista"
+                  aria-pressed={vista === 'lista'}
+                  onClick={() => mudarVista('lista')}
+                >
+                  <Icone nome="lista" />
+                </button>
+              </div>
+            </div>
+
+            {visiveis.length === 0 ? (
+              <div className="sem-resultado" role="status">
+                <p>Nenhum livro por aqui com essa busca.</p>
+                <button
+                  type="button"
+                  className="botao"
+                  onClick={() => {
+                    setBusca('')
+                    setFormato('todos')
+                  }}
+                >
+                  Mostrar todos os livros
+                </button>
+              </div>
+            ) : vista === 'grade' ? (
               <ul className="grade" aria-label="Sua biblioteca">
-                {livros.map(livro => (
+                {visiveis.map(livro => (
                   <li key={livro.id} className="cartao">
                     <button type="button" className="cartao-abrir" onClick={() => aoAbrir(livro.id)}>
-                      <Capa livro={livro} />
+                      <span className="cartao-capa">
+                        <Capa livro={livro} />
+                        <span className="selo-formato" aria-hidden="true">
+                          {livro.formatoOriginal.toUpperCase()}
+                        </span>
+                      </span>
                       <span className="cartao-titulo">{livro.titulo}</span>
                       {livro.autores.length > 0 && <span className="cartao-autor">{autores(livro)}</span>}
-                      {livro.progresso > 0 && (
-                        <span className="cartao-progresso">
-                          <span className="barra-livro" aria-hidden="true">
-                            <i style={{ width: `${Math.max(2, porcentagem(livro))}%` }} />
-                          </span>
-                          <span className="so-leitor-de-tela">{porcentagem(livro)}% lido</span>
-                        </span>
-                      )}
+                      <span className="so-leitor-de-tela">{livro.formatoOriginal.toUpperCase()}</span>
+                      <Progresso livro={livro} />
+                      <span className="cartao-quando">{ultimaLeitura(livro)}</span>
                     </button>
-                    <MenuDeAcoes
-                      rotulo={`Mais ações para ${livro.titulo}`}
-                      acoes={[{ rotulo: 'Remover da biblioteca', perigosa: true, aoEscolher: () => setRemovendo(livro) }]}
-                    />
+                    {acoes(livro)}
                   </li>
                 ))}
               </ul>
-            </section>
+            ) : (
+              <ul className="lista" aria-label="Sua biblioteca">
+                {visiveis.map(livro => (
+                  <li key={livro.id} className="linha">
+                    <button type="button" className="linha-abrir" onClick={() => aoAbrir(livro.id)}>
+                      <Capa livro={livro} tamanho="pequena" />
+                      <span className="linha-nome">
+                        <span className="cartao-titulo">{livro.titulo}</span>
+                        {livro.autores.length > 0 && <span className="cartao-autor">{autores(livro)}</span>}
+                      </span>
+                      <span className="linha-selos">
+                        <span className="selo-info">{livro.formatoOriginal.toUpperCase()}</span>
+                        {comoLe(livro) && <span className="selo-info">{comoLe(livro)}</span>}
+                      </span>
+                      <span className="linha-progresso">
+                        {livro.progresso > 0 ? <Progresso livro={livro} /> : <span className="cartao-quando">Não começado</span>}
+                      </span>
+                      <span className="cartao-quando linha-quando">{ultimaLeitura(livro)}</span>
+                      <span className="selo-info linha-onde">
+                        <Icone nome="computador" />
+                        Neste computador
+                      </span>
+                    </button>
+                    {acoes(livro)}
+                  </li>
+                ))}
+              </ul>
+            )}
           </>
         )}
       </main>
-
-      {arrastando && (
-        <div className="soltar" aria-hidden="true">
-          <div>
-            <Icone nome="mais" />
-            <p>Solte o arquivo para adicioná-lo à sua biblioteca</p>
-          </div>
-        </div>
-      )}
-
-      <DialogosDeImportacao
-        estado={importacao.estado}
-        aoFechar={importacao.fechar}
-        aoLer={livro => {
-          importacao.fechar()
-          aoAbrir(livro.id)
-        }}
-      />
 
       <Dialogo aberto={!!removendo} titulo="Remover este livro?" aoFechar={() => setRemovendo(null)} alerta>
         {removendo && (

@@ -6,7 +6,7 @@ import { api, urlDoArquivo } from '../api'
 import { gerarCapaDoPdf } from '../leitor/pdf'
 import { Capa } from './Capa'
 import { Dialogo } from './Dialogo'
-import { Icone } from './Icone'
+import { Burro } from './Marca'
 
 type Estado =
   | { fase: 'ocioso' }
@@ -165,15 +165,18 @@ export function DialogosDeImportacao({
         {estado.fase === 'andamento' && <Andamento andamento={estado.andamento} adaptou={estado.adaptou} />}
       </Dialogo>
 
-      <Dialogo aberto={estado.fase === 'fim'} titulo="Seu livro está na biblioteca" aoFechar={aoFechar}>
+      <Dialogo aberto={estado.fase === 'fim'} titulo="Seu livro está na biblioteca" aoFechar={aoFechar} icone={<Burro />}>
         {estado.fase === 'fim' && (
           <div className="fim" role="status">
-            <span className="selo">
-              <Icone nome="check" />
-            </span>
             <LivroResumo livro={estado.livro} />
             <ol className="proximos">
               <li className="feito">Guardado na sua biblioteca, neste computador</li>
+              {estado.livro.formatoOriginal === 'pdf' &&
+                (estado.livro.arquivoLeitura ? (
+                  <li className="feito">PDF desamassado: o texto se ajusta a qualquer tela, e a página original fica a um clique</li>
+                ) : (
+                  <li>Este PDF é uma imagem digitalizada: ele abre como foi impresso</li>
+                ))}
               <li>Quando você ler, o app lembra sozinho onde parou</li>
             </ol>
             {estado.aviso && <p className="dica aviso-importacao">{estado.aviso}</p>}
@@ -182,7 +185,7 @@ export function DialogosDeImportacao({
                 Começar a ler
               </button>
               <button type="button" className="botao" onClick={aoFechar}>
-                Voltar à biblioteca
+                Agora não
               </button>
             </div>
           </div>
@@ -199,7 +202,7 @@ export function DialogosDeImportacao({
                 Abrir o livro
               </button>
               <button type="button" className="botao" onClick={aoFechar}>
-                Voltar à biblioteca
+                Agora não
               </button>
             </div>
           </>

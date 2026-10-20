@@ -1,0 +1,228 @@
+/* A marca: assinatura, burro e o dock flutuante. */
+
+.assinatura {
+  display: inline-block;
+  font: 650 27px/1 var(--display);
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+}
+
+/* A coroa ocupa o lugar do acento do â. */
+.assinatura-a {
+  position: relative;
+  display: inline-block;
+}
+
+.assinatura-coroa {
+  position: absolute;
+  left: 52%;
+  bottom: 0.6em;
+  width: 0.6em;
+  height: auto;
+  color: var(--ouro);
+  transform: translateX(-50%) rotate(-9deg);
+}
+
+.coroa {
+  width: 24px;
+  height: 18px;
+  color: var(--ouro);
+}
+
+.burro {
+  width: 64px;
+  height: 64px;
+}
+
+/* Dock: ameixa, flutuando no centro da base. As cores são fixas: ele é da marca em qualquer tema. */
+
+.dock {
+  --foco: var(--ouro);
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 30;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px 6px 10px;
+  border-radius: 999px;
+  background: var(--ameixa);
+  color: var(--creme);
+  box-shadow:
+    0 14px 36px rgb(47 14 47 / 40%),
+    0 2px 6px rgb(0 0 0 / 22%),
+    inset 0 0 0 1px rgb(246 235 221 / 12%);
+  animation: dock-entrar 0.22s ease;
+}
+
+.dock-item {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+  min-width: 76px;
+  min-height: 54px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #beadac;
+  font: 600 12px/1 var(--ui);
+  transition: background var(--transicao), color var(--transicao);
+}
+
+.dock-item:hover {
+  background: rgb(185 167 217 / 16%);
+  color: var(--creme);
+}
+
+.dock-item[aria-current='page'] {
+  color: var(--creme);
+}
+
+.dock-item[aria-current='page'] .icone {
+  color: var(--ouro);
+}
+
+/* O item atual ganha um ponto de ouro embaixo, além da cor: não depende só de cor. */
+.dock-item[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ouro);
+}
+
+/* Importar: a ação de destaque, um círculo de ouro que sobe acima do dock. */
+.dock-importar {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  margin: -30px 6px 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--creme);
+  font: 600 12px/1 var(--ui);
+}
+
+.dock-importar-circulo {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--ouro);
+  color: var(--ameixa);
+  box-shadow:
+    0 0 0 5px var(--ameixa),
+    0 10px 22px rgb(0 0 0 / 32%);
+  transition: filter var(--transicao), transform var(--transicao);
+}
+
+.dock-importar .icone {
+  width: 28px;
+  height: 28px;
+  stroke-width: 2.2;
+}
+
+.dock-importar:hover .dock-importar-circulo {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.dock-recolher {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-left: 4px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #beadac;
+}
+
+.dock-recolher:hover {
+  background: rgb(185 167 217 / 16%);
+  color: var(--creme);
+}
+
+.dock-recolhido {
+  --foco: var(--ouro);
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  z-index: 30;
+  transform: translateX(-50%);
+}
+
+/* Recolhido, o dock vira um botão de ouro: fácil de achar sobre a ameixa e sobre o creme. */
+.dock-mostrar {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: var(--alvo);
+  border: 0;
+  border-radius: 999px;
+  background: #3d1a3c;
+  color: var(--ouro);
+  box-shadow:
+    0 8px 22px rgb(47 14 47 / 40%),
+    inset 0 0 0 1px rgb(212 175 124 / 45%);
+}
+
+.dock-mostrar:hover {
+  background: var(--ameixa);
+}
+
+/* No leitor, o dock mora na faixa de baixo: menor, sem flutuar e sem subir o Importar. */
+.dock-na-faixa {
+  position: static;
+  transform: none;
+  padding: 4px 6px;
+  animation: none;
+  box-shadow: inset 0 0 0 1px rgb(246 235 221 / 12%);
+}
+
+.dock-na-faixa .dock-item {
+  min-width: 64px;
+  min-height: 46px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.dock-na-faixa .dock-item .icone {
+  width: 20px;
+  height: 20px;
+}
+
+.dock-na-faixa .dock-importar {
+  margin: 0 2px;
+  gap: 3px;
+  font-size: 11px;
+}
+
+.dock-na-faixa .dock-importar-circulo {
+  width: 30px;
+  height: 30px;
+  box-shadow: none;
+}
+
+.dock-na-faixa .dock-importar .icone {
+  width: 20px;
+  height: 20px;
+}
+
+@keyframes dock-entrar {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+}

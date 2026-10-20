@@ -13,13 +13,14 @@ export function lerPreferencias(banco: Banco): Preferencias {
   return { ...PREFERENCIAS_PADRAO, ...validarPreferencias(banco.lerPreferencia('leitura')) }
 }
 
-function lerSessao(banco: Banco, biblioteca: Biblioteca): Sessao {
+export function lerSessao(banco: Banco, biblioteca: Biblioteca): Sessao {
   const sessao = banco.lerPreferencia<Sessao>('sessao')
   const livroAberto = sessao?.livroAberto
   return { livroAberto: idValido(livroAberto) && biblioteca.obter(livroAberto) ? livroAberto : null }
 }
 
-export function registrarIpc(banco: Banco, biblioteca: Biblioteca, aoMudarPreferencias: (p: Preferencias) => void) {
+/** aoMudarAparencia: o tema ou a tela (biblioteca ou leitor) mudou, e o fundo da janela acompanha. */
+export function registrarIpc(banco: Banco, biblioteca: Biblioteca, aoMudarAparencia: () => void) {
   const importar = (caminho: string, destino: WebContents) =>
     biblioteca.importar(caminho, andamento => {
       if (!destino.isDestroyed()) destino.send('importacao:andamento', andamento)
@@ -60,11 +61,13 @@ export function registrarIpc(banco: Banco, biblioteca: Biblioteca, aoMudarPrefer
     if (!idValido(id) || !biblioteca.obter(id)) return null
     biblioteca.marcarAberto(id)
     banco.salvarPreferencia('sessao', { livroAberto: id } satisfies Sessao)
+    aoMudarAparencia()
     return biblioteca.obter(id)
   })
 
   ipcMain.handle('leitura:fechar', () => {
     banco.salvarPreferencia('sessao', { livroAberto: null } satisfies Sessao)
+    aoMudarAparencia()
   })
 
   ipcMain.handle('leitura:salvar-posicao', (_, id: unknown, posicao: unknown) => {
@@ -83,7 +86,7 @@ export function registrarIpc(banco: Banco, biblioteca: Biblioteca, aoMudarPrefer
   ipcMain.handle('preferencias:salvar', (_, parcial: unknown) => {
     const preferencias = { ...lerPreferencias(banco), ...validarPreferencias(parcial) }
     banco.salvarPreferencia('leitura', preferencias)
-    aoMudarPreferencias(preferencias)
+    aoMudarAparencia()
     return preferencias
   })
 

@@ -100,9 +100,9 @@ Notas para a parte 2 (sincronização):
 ## 5. Fluxos
 
 **Adicionar livro (início, meio e fim)**
-1. Início: botão "Adicionar livro" (diálogo do sistema) ou arrastar o arquivo para a janela.
+1. Início: "Importar livro" (o botão de ouro no centro do dock, ou o do estado vazio) abre o diálogo do sistema; arrastar o arquivo para qualquer tela também vale, inclusive no leitor.
 2. Meio: painel "Preparando seu livro", com o que está acontecendo ("Lendo o arquivo", e para PDF "Adaptando o texto — página 34 de 210").
-3. Fim: selo, "Seu livro está na biblioteca", capa e título, a lista do que acontece agora, e os botões "Começar a ler" e "Voltar à biblioteca".
+3. Fim: o burro de coroa, "Seu livro está na biblioteca", capa e título, a lista do que aconteceu (no PDF, se o texto foi adaptado ou se ele é digitalizado), e os botões "Começar a ler" e "Agora não".
 - Arquivo repetido (mesmo SHA-256): "Esse livro já está na sua biblioteca", com "Abrir".
 - EPUB com DRM: explica que o arquivo está protegido pela loja e não pode ser aberto.
 - Arquivo inválido: explica e não deixa lixo na pasta de dados.
@@ -115,9 +115,9 @@ Notas para a parte 2 (sincronização):
 ## 6. Leitor
 
 - Navegação: ←/→, PageUp/PageDown, espaço (Shift+espaço volta), Home/End do capítulo, roda do mouse, clique nas margens laterais.
-- Barras de cima (voltar, título, capítulo, Sumário, Aa) e de baixo (progresso, capítulo, tempo restante, porcentagem). Somem após 2,5 s sem mexer o mouse; reaparecem com o mouse, com Tab ou com um painel aberto.
+- Faixa de cima: voltar (com o nome de onde você veio: "Início" ou "Biblioteca"), título, capítulo, alternância do PDF, Sumário e Aa. Faixa de baixo: capítulo e tempo restante, o dock compacto no meio, a porcentagem, e o fio de progresso com o ponto de ouro. As duas cabem nas margens do livro (72 px): nunca cobrem o texto. Somem após 2,5 s sem mexer o mouse; escondidas, não pegam clique; reaparecem com o mouse, com Tab ou com um painel aberto.
 - Painéis (Sumário, Aa) são diálogos: foco preso, Esc fecha, foco volta ao botão de origem.
-- A preferência de tema vale para o app inteiro; as de texto valem para todos os livros.
+- O tema de leitura (Automático, Creme, Sépia, Noite) vale para o leitor, os painéis e os diálogos; as telas da biblioteca ficam na ameixa da marca. As preferências de texto valem para todos os livros.
 - Padrões: tema Automático; Literata; 19px; espaçamento 1,55; coluna de 660px; alinhado à esquerda (texto justificado é opcional, porque prejudica quem tem dislexia); duas páginas quando couber.
 
 ## 7. Conversão PDF → EPUB (etapa 2)
@@ -149,7 +149,19 @@ Limites conhecidos: imagens e tabelas do PDF não entram no texto adaptado (est�
 - GitHub Actions em `windows-latest` a cada push: testes, `electron-builder` (instalador NSIS e `.exe` portátil), artefatos do run e pré-release `dev` com link fixo.
 - Sem assinatura de código por enquanto: o Windows mostra "O Windows protegeu o computador" → "Mais informações" → "Executar assim mesmo".
 
-## 10. Vocabulário
+## 10. Identidade visual
+
+A marca vem do kit do Daniel (docs/marca: manual, tokens e referências). Decisões de implementação:
+
+- **Cores:** as cinco da marca em `estilos/tokens.css` (Ameixa Real #2F0E2F, Creme Leitura #F6EBDD, Ouro Irreverente #D4AF7C, Lilás Pensativo #B9A7D9, Grafite Focado #1F1F24) e os tons derivados, todos com contraste conferido por cálculo (texto ≥ 5,1:1; bordas e foco ≥ 3,1:1). Ouro e lilás nunca são texto sobre fundo claro.
+- **Duas superfícies:** a da marca (ameixa, creme no texto, ouro nos destaques) no Início, na Biblioteca e no dock; a do tema de leitura no leitor, nos painéis, nos diálogos e no cartão "Continuar lendo". O tema claro se chama Creme na tela (no código e no banco continua `papel`, para não migrar preferências).
+- **Letras:** Fraunces (com eixo de tamanho óptico) nos títulos e na assinatura; Inter na interface; nos livros, a escolha do leitor (Literata, Atkinson ou a do livro), nunca a fonte da marca.
+- **Navegação:** sem barra lateral. Dock flutuante no centro da base com Início, Biblioteca, Importar (círculo de ouro), Buscar e Ajustes; recolhe num botão e lembra a escolha. No leitor, mora na faixa de baixo, sem Ajustes (o Aa está no topo) e some junto com as faixas.
+- **Telas:** Início (saudação, Continuar lendo, Na sua estante) e Biblioteca (busca por título ou autor sem acento, formato, ordem por recentes, título — sem o artigo —, autor ou progresso, grade ou lista, selos de formato e de "Neste computador", última leitura em palavras).
+- **Burro:** desenhado em SVG a partir das referências (cabeça creme, coroa de ouro, pálpebras a meio mastro). Aparece no ícone do app, no sucesso da importação e, de óculos escuros, na biblioteca vazia. Humor só fora da leitura: saudação, estado vazio, importação.
+- **A decidir (produto):** Ferramentas/Transformar (resumo e reescrita por IA, sempre rotulados), Drive e sincronização, coleções, preços e cotas (não aparecem na interface), versão final vetorial da marca por designer.
+
+## 11. Vocabulário
 
 Um conceito, um nome, igual no código, na interface e na conversa.
 
@@ -162,5 +174,8 @@ Um conceito, um nome, igual no código, na interface e na conversa.
 | continuar lendo | o livro aberto mais recentemente e ainda não terminado |
 | texto adaptado | o EPUB gerado a partir de um PDF |
 | página original | o PDF como foi impresso |
-| ajustes de leitura | o painel Aa |
+| ajustes de leitura | o painel Aa (Ajustes, no dock) |
+| início | a tela de abertura: saudação, continuar lendo e os livros mexidos por último |
+| dock | a navegação principal, flutuando na base da janela |
+| importar | trazer um arquivo do computador para a biblioteca |
 | posição | onde você está no livro (Locator) |

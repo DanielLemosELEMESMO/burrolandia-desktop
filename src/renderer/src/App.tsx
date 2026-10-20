@@ -2,17 +2,62 @@ import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { PREFERENCIAS_PADRAO, type Livro, type Preferencias } from '@nucleo/tipos'
 import { api, temaEfetivo } from './api'
 import { AjustesLeitura } from './componentes/AjustesLeitura'
+import { Dock, type Destino, type Navegacao } from './componentes/Dock'
+import { Icone } from './componentes/Icone'
+import { DialogosDeImportacao, useImportacao } from './componentes/Importacao'
 import { TelaBiblioteca } from './telas/Biblioteca'
+import { TelaInicio } from './telas/Inicio'
 import { TelaLeitor } from './telas/Leitor'
 import { usarMidia } from './usarMidia'
 
-type Tela = { tipo: 'carregando' } | { tipo: 'biblioteca' } | { tipo: 'leitor'; livro: Livro }
+type Tela = { tipo: 'carregando' } | { tipo: Destino } | { tipo: 'leitor'; livro: Livro; origem: Destino }
+
+/** Arrastar um arquivo para qualquer lugar da janela adiciona o livro. */
+function usarArrastar(aoSoltar: (arquivos: FileList) => void) {
+  const [arrastando, setArrastando] = useState(false)
+  useEffect(() => {
+    let profundidade = 0
+    const temArquivo = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
+    const entrar = (e: DragEvent) => {
+      if (!temArquivo(e)) return
+      e.preventDefault()
+      profundidade++
+      setArrastando(true)
+    }
+    const sobre = (e: DragEvent) => {
+      if (temArquivo(e)) e.preventDefault()
+    }
+    const sair = () => {
+      profundidade = Math.max(0, profundidade - 1)
+      if (!profundidade) setArrastando(false)
+    }
+    const soltar = (e: DragEvent) => {
+      e.preventDefault()
+      profundidade = 0
+      setArrastando(false)
+      if (e.dataTransfer?.files.length) aoSoltar(e.dataTransfer.files)
+    }
+    window.addEventListener('dragenter', entrar)
+    window.addEventListener('dragover', sobre)
+    window.addEventListener('dragleave', sair)
+    window.addEventListener('drop', soltar)
+    return () => {
+      window.removeEventListener('dragenter', entrar)
+      window.removeEventListener('dragover', sobre)
+      window.removeEventListener('dragleave', sair)
+      window.removeEventListener('drop', soltar)
+    }
+  }, [aoSoltar])
+  return arrastando
+}
 
 export function App() {
   const [preferencias, setPreferencias] = useState<Preferencias>(PREFERENCIAS_PADRAO)
   const [livros, setLivros] = useState<Livro[]>([])
   const [tela, setTela] = useState<Tela>({ tipo: 'carregando' })
   const [ajustesAbertos, setAjustesAbertos] = useState(false)
+  // Cada pedido de busca (pelo dock) põe o cursor no campo de busca da biblioteca.
+  const [pedidoDeBusca, setPedidoDeBusca] = useState(0)
   const escuroNoSistema = usarMidia('(prefers-color-scheme: dark)')
   const tema = temaEfetivo(preferencias, escuroNoSistema)
 
@@ -20,7 +65,12 @@ export function App() {
     document.documentElement.dataset.tema = tema
   }, [tema])
 
+  useLayoutEffect(() => {
+    if (tela.tipo !== 'carregando') document.documentElement.dataset.tela = tela.tipo === 'leitor' ? 'leitor' : 'marca'
+  }, [tela.tipo])
+
   const recarregar = useCallback(async () => setLivros(await api.biblioteca.listar()), [])
+  const importacao = useImportacao(recarregar)
 
   // Ao abrir: se você fechou o app dentro de um livro, ele reabre dentro do livro.
   useEffect(() => {
@@ -33,53 +83,109 @@ export function App() {
       setPreferencias(salvas)
       setLivros(lista)
       const livro = sessao.livroAberto ? await api.leitura.abrir(sessao.livroAberto) : null
-      setTela(livro ? { tipo: 'leitor', livro } : { tipo: 'biblioteca' })
+      setTela(livro ? { tipo: 'leitor', livro, origem: 'inicio' } : { tipo: 'inicio' })
     })()
   }, [])
 
-  const abrir = useCallback(async (id: string) => {
+  const abrir = useCallback(async (id: string, origem: Destino) => {
     const livro = await api.leitura.abrir(id)
-    if (livro) setTela({ tipo: 'leitor', livro })
+    if (livro) setTela({ tipo: 'leitor', livro, origem })
   }, [])
 
-  const voltar = useCallback(async () => {
-    await api.leitura.fechar()
-    await recarregar()
-    setTela({ tipo: 'biblioteca' })
-  }, [recarregar])
+  const irPara = useCallback(
+    async (destino: Destino) => {
+      if (tela.tipo === 'leitor') {
+        await api.leitura.fechar()
+        await recarregar()
+      }
+      setTela({ tipo: destino })
+    },
+    [tela.tipo, recarregar],
+  )
+
+  const navegacao: Navegacao = {
+    aoIr: destino => void irPara(destino),
+    aoImportar: () => void importacao.adicionar(),
+    aoBuscar: () => {
+      void irPara('biblioteca')
+      setPedidoDeBusca(n => n + 1)
+    },
+  }
+
+  const soltarArquivos = useCallback(
+    (arquivos: FileList) => {
+      const aviso = arquivos.length > 1 ? 'Os livros entram um por vez: adicionei só o primeiro arquivo.' : undefined
+      void importacao.importar(api.biblioteca.caminhoDoArquivo(arquivos[0]), aviso)
+    },
+    [importacao.importar],
+  )
+  const arrastando = usarArrastar(soltarArquivos)
 
   const mudarPreferencias = useCallback((parcial: Partial<Preferencias>) => {
     setPreferencias(atuais => ({ ...atuais, ...parcial }))
     void api.preferencias.salvar(parcial)
   }, [])
 
+  const origemAtual: Destino = tela.tipo === 'leitor' ? tela.origem : tela.tipo === 'biblioteca' ? 'biblioteca' : 'inicio'
+
   return (
     <>
+      {tela.tipo === 'inicio' && (
+        <TelaInicio
+          livros={livros}
+          aoAbrir={id => void abrir(id, 'inicio')}
+          aoVerBiblioteca={() => void irPara('biblioteca')}
+          aoImportar={navegacao.aoImportar}
+        />
+      )}
       {tela.tipo === 'biblioteca' && (
         <TelaBiblioteca
           livros={livros}
-          aoAbrir={id => void abrir(id)}
+          pedidoDeBusca={pedidoDeBusca}
+          aoAbrir={id => void abrir(id, 'biblioteca')}
           aoMudarBiblioteca={() => void recarregar()}
-          abrirAjustes={() => setAjustesAbertos(true)}
+          aoImportar={navegacao.aoImportar}
         />
+      )}
+      {(tela.tipo === 'inicio' || tela.tipo === 'biblioteca') && (
+        <>
+          <Dock atual={tela.tipo} navegacao={navegacao} aoAjustes={() => setAjustesAbertos(true)} />
+          <AjustesLeitura
+            aberto={ajustesAbertos}
+            aoFechar={() => setAjustesAbertos(false)}
+            preferencias={preferencias}
+            aoMudar={mudarPreferencias}
+          />
+        </>
       )}
       {tela.tipo === 'leitor' && (
         <TelaLeitor
           key={tela.livro.id}
           livro={tela.livro}
+          origem={tela.origem}
+          navegacao={navegacao}
           preferencias={preferencias}
           tema={tema}
           aoMudarPreferencias={mudarPreferencias}
-          aoVoltar={() => void voltar()}
         />
       )}
-      {tela.tipo === 'biblioteca' && (
-        <AjustesLeitura
-          aberto={ajustesAbertos}
-          aoFechar={() => setAjustesAbertos(false)}
-          preferencias={preferencias}
-          aoMudar={mudarPreferencias}
-        />
+
+      <DialogosDeImportacao
+        estado={importacao.estado}
+        aoFechar={importacao.fechar}
+        aoLer={livro => {
+          importacao.fechar()
+          void abrir(livro.id, origemAtual)
+        }}
+      />
+
+      {arrastando && (
+        <div className="soltar" aria-hidden="true">
+          <div>
+            <Icone nome="mais" />
+            <p>Solte o arquivo para adicioná-lo à sua biblioteca</p>
+          </div>
+        </div>
       )}
     </>
   )

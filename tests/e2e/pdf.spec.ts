@@ -16,7 +16,7 @@ test('adiciona um PDF, lê o texto adaptado e alterna com a página original sem
   const { app, janela } = await abrirApp(dados)
 
   await escolherArquivo(app, pdfDeTeste(dados, 'dom-casmurro-uma-coluna.pdf'))
-  await janela.getByRole('button', { name: 'Adicionar livro' }).first().click()
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
   const fim = janela.getByRole('dialog', { name: 'Seu livro está na biblioteca' })
   await expect(fim).toBeVisible({ timeout: 30_000 })
   await expect(fim.locator('strong', { hasText: 'Dom Casmurro' })).toBeVisible()
@@ -43,7 +43,7 @@ test('um PDF digitalizado abre direto na página original, com um aviso', async 
   const { app, janela } = await abrirApp(dados)
 
   await escolherArquivo(app, pdfDeTeste(dados, 'digitalizado.pdf'))
-  await janela.getByRole('button', { name: 'Adicionar livro' }).first().click()
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
   await janela.getByRole('dialog', { name: 'Seu livro está na biblioteca' }).getByRole('button', { name: 'Começar a ler' }).click()
 
   const leitor = janela.getByRole('main', { name: 'Lendo Digitalizado' })
@@ -57,7 +57,7 @@ test('um PDF digitalizado abre direto na página original, com um aviso', async 
 /** Adiciona um PDF de teste e abre o leitor nele. */
 async function adicionarEAbrir(app: Parameters<typeof escolherArquivo>[0], janela: import('@playwright/test').Page, caminho: string) {
   await escolherArquivo(app, caminho)
-  await janela.getByRole('button', { name: 'Adicionar livro' }).first().click()
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
   await janela.getByRole('dialog', { name: 'Seu livro está na biblioteca' }).getByRole('button', { name: 'Começar a ler' }).click()
 }
 

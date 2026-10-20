@@ -32,7 +32,24 @@
 }
 
 .dialogo-cabeca h2 {
+  flex: 1;
   font-size: 26px;
+}
+
+/* A figura ao lado do título fica sempre sobre ameixa, em qualquer tema. */
+.dialogo-icone {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  background: var(--ameixa);
+}
+
+.dialogo-icone .burro {
+  width: 50px;
+  height: 50px;
 }
 
 .dialogo-cabeca .botao-icone {
@@ -179,23 +196,6 @@
 
 /* Importação: fim */
 
-.fim .selo {
-  display: inline-grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--acento);
-  color: var(--sobre-acento);
-  margin-bottom: 18px;
-}
-
-.fim .selo .icone {
-  width: 28px;
-  height: 28px;
-  stroke-width: 2.4;
-}
-
 .livro-resumo {
   display: flex;
   align-items: center;
@@ -207,7 +207,7 @@
 
 .livro-resumo strong {
   display: block;
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: 19px;
   font-weight: 600;
   line-height: 1.25;
@@ -356,26 +356,26 @@
   inset: 0;
   display: grid;
   place-items: center;
-  font: 600 12px/1 var(--serif);
+  font: 600 12px/1 var(--leitura);
 }
 
 .amostra-papel {
-  background: #fbfaf6;
-  color: #1f2421;
+  background: #f6ebdd;
+  color: #1f1f24;
 }
 
 .amostra-sepia {
-  background: #f4ecd8;
-  color: #3b2f22;
+  background: #ebdcc2;
+  color: #3a2a1c;
 }
 
 .amostra-noite {
-  background: #141816;
-  color: #dfe3dd;
+  background: #1c101c;
+  color: #e8dccb;
 }
 
 .amostra-automatico {
-  background: linear-gradient(135deg, #fbfaf6 50%, #141816 50%);
+  background: linear-gradient(135deg, #f6ebdd 50%, #1c101c 50%);
 }
 
 .amostra-automatico::after {
@@ -400,7 +400,7 @@
 
 .tamanho .botao {
   min-width: 64px;
-  font-family: var(--serif);
+  font-family: var(--leitura);
   font-size: 17px;
 }
 

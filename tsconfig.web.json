@@ -29,6 +29,7 @@
     "src/renderer/src/**/*",
     "src/preload/api.ts",
     "src/nucleo/tipos.ts",
-    "src/nucleo/tempo.ts"
+    "src/nucleo/tempo.ts",
+    "src/nucleo/organizar.ts"
   ]
 }

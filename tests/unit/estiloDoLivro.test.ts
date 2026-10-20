@@ -10,9 +10,16 @@ const fontes = {
 describe('estiloDoLivro', () => {
   it('pinta a página e o texto com as cores do tema', () => {
     const css = estiloDoLivro({ ...PREFERENCIAS_PADRAO, tema: 'noite' }, 'noite', fontes)
-    expect(css).toContain('#141816') // página da Noite
-    expect(css).toContain('#dfe3dd') // tinta da Noite
+    expect(css).toContain('#1c101c') // página da Noite
+    expect(css).toContain('#e8dccb') // tinta da Noite
     expect(css).toContain('color-scheme: dark')
+  })
+
+  it('lê no Creme Leitura da marca, com grafite no texto e lilás na seleção', () => {
+    const css = estiloDoLivro(PREFERENCIAS_PADRAO, 'papel', fontes)
+    expect(css).toMatch(/background: #f6ebdd !important/)
+    expect(css).toMatch(/color: #1f1f24 !important/)
+    expect(css).toMatch(/::selection \{ background: #dbccdb; \}/)
   })
 
   it('aplica a letra escolhida, com a fonte local', () => {
@@ -45,7 +52,7 @@ describe('atributosDoLayout', () => {
       'max-inline-size': '820px',
       'max-column-count': '1',
       gap: '6%',
-      margin: '56px',
+      margin: '72px',
       animated: true,
     })
   })

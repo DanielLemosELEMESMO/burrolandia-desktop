@@ -1,4 +1,5 @@
-/* Leitor: o livro ocupa a janela; as barras flutuam e somem enquanto você lê. */
+/* Leitor: o livro ocupa a janela, no Creme Leitura (ou no tema escolhido). As faixas de cima e de
+   baixo moram nas margens do livro e somem enquanto você lê; escondidas, não pegam clique. */
 
 .leitor {
   position: fixed;
@@ -24,6 +25,7 @@
 
 .leitor[data-barras='ocultas'] .leitor-barra:not(:focus-within, :focus-visible) {
   opacity: 0;
+  pointer-events: none;
 }
 
 .leitor-topo {
@@ -35,10 +37,29 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 56px;
-  padding: 0 10px;
+  height: 60px;
+  padding: 0 12px;
   background: var(--pagina);
   border-bottom: 1px solid color-mix(in srgb, var(--linha) 70%, transparent);
+}
+
+.botao-voltar {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: var(--alvo);
+  padding: 0 16px 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--tinta);
+  font-weight: 600;
+  font-size: 14px;
+  transition: background var(--transicao);
+}
+
+.botao-voltar:hover {
+  background: var(--acento-suave);
 }
 
 .leitor-titulo {
@@ -59,8 +80,7 @@
 }
 
 .leitor-nome {
-  font-weight: 600;
-  font-size: 14px;
+  font: 600 16px/1.25 var(--display);
 }
 
 .leitor-capitulo {
@@ -68,42 +88,75 @@
   font-size: 13px;
 }
 
+/* A faixa de baixo: onde você está à esquerda, o dock no meio, quanto já leu à direita. */
 .leitor-rodape {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 5;
-  min-height: 56px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-  padding: 4px 24px;
+  height: 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px 4px;
   background: var(--pagina);
 }
 
-.leitor-rodape .barra-livro {
-  height: 3px;
-}
-
-.rodape-textos {
+.rodape-lado {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  min-width: 0;
   color: var(--suave);
   font-size: 13px;
-  white-space: nowrap;
+  line-height: 1.4;
 }
 
-.rodape-textos span {
+.rodape-lado > span {
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.rodape-textos span:nth-child(2) {
-  flex: 1;
-  text-align: center;
+.rodape-capitulo {
+  color: var(--tinta);
+  font-weight: 600;
+}
+
+.rodape-direita {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* O fio do progresso na borda de baixo, com o ponto de ouro de onde você está. */
+.rodape-barra {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.rodape-barra i {
+  position: relative;
+  border-radius: 0 3px 3px 0;
+}
+
+.rodape-barra i::after {
+  content: '';
+  position: absolute;
+  right: -4px;
+  top: -2.5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ouro);
 }
 
 .virar {
@@ -141,7 +194,7 @@
   transform: translate(-50%, -50%);
   z-index: 6;
   color: var(--suave);
-  font: 500 18px/1.4 var(--serif);
+  font: 500 18px/1.4 var(--display);
 }
 
 .leitor-erro {
@@ -151,7 +204,7 @@
   background: var(--superficie);
   box-shadow: var(--sombra);
   color: var(--tinta);
-  font: 15px/1.55 var(--sans);
+  font: 15px/1.55 var(--ui);
   display: grid;
   gap: 12px;
   justify-items: start;
@@ -206,7 +259,7 @@
   flex-direction: column;
   align-items: center;
   gap: 20px;
-  padding: 76px 32px 88px;
+  padding: 84px 32px 96px;
   outline: none;
 }
 
@@ -226,7 +279,7 @@
 
 /* Na Noite, a página branca vira escura e o texto claro; imagens ficam um pouco estranhas, mas os olhos agradecem. */
 [data-tema='noite'] .pagina-vaga {
-  background: #141816;
+  background: #1c101c;
 }
 
 [data-tema='noite'] .pagina-vaga canvas {
@@ -235,7 +288,7 @@
 
 .leitor-nota {
   position: absolute;
-  top: 68px;
+  top: 76px;
   left: 50%;
   z-index: 6;
   transform: translateX(-50%);

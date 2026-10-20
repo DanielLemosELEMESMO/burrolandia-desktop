@@ -71,7 +71,7 @@ export function AjustesLeitura({
           classe="ajuste-tema"
           opcoes={[
             { valor: 'automatico', rotulo: 'Automático', amostra: 'automatico' },
-            { valor: 'papel', rotulo: 'Papel', amostra: 'papel' },
+            { valor: 'papel', rotulo: 'Creme', amostra: 'papel' },
             { valor: 'sepia', rotulo: 'Sépia', amostra: 'sepia' },
             { valor: 'noite', rotulo: 'Noite', amostra: 'noite' },
           ]}
