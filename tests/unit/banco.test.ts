@@ -82,6 +82,12 @@ describe('Banco', () => {
     expect(salvo?.progresso).toBe(0.4)
   })
 
+  it('atualiza a capa de um livro', () => {
+    const livro = banco.inserirLivro(novoLivro({ capa: null }))
+    banco.atualizarLivro(livro.id, { capa: 'capa.jpg' })
+    expect(banco.obterLivro(livro.id)?.capa).toBe('capa.jpg')
+  })
+
   it('remove um livro', () => {
     const livro = banco.inserirLivro(novoLivro())
     banco.removerLivro(livro.id)

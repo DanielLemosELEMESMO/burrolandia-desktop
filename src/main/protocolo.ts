@@ -29,6 +29,7 @@ const TIPOS: Record<string, string> = {
   '.ttf': 'font/ttf',
   '.epub': 'application/epub+zip',
   '.pdf': 'application/pdf',
+  '.wasm': 'application/wasm',
 }
 
 // Scripts só do próprio app: isso também bloqueia scripts embutidos em EPUBs, porque os

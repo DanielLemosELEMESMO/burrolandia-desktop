@@ -6,14 +6,26 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join, resolve, sep } from 'node:path'
 import { ErroEpub, lerEpub } from '@nucleo/epub/ler'
-import type { AndamentoImportacao, CodigoErroImportacao, Livro, Locator, ResultadoImportacao } from '@nucleo/tipos'
+import { converterPdfEmEpub, type OpcoesDeConversao, type ResultadoConversao } from '@nucleo/pdf/converter'
+import type {
+  AndamentoImportacao,
+  CodigoErroImportacao,
+  Identificadores,
+  Livro,
+  Locator,
+  ResultadoImportacao,
+} from '@nucleo/tipos'
 import type { Banco } from './banco'
+
+/** Converte PDF em EPUB. No app, roda num worker; nos testes, direto. */
+export type ConversorDePdf = (bytes: Uint8Array, opcoes: OpcoesDeConversao) => Promise<ResultadoConversao>
 
 export const MENSAGENS_DE_ERRO: Record<CodigoErroImportacao, string> = {
   'formato-nao-suportado': 'Este app lê arquivos EPUB e PDF, e este arquivo é de outro tipo.',
   'arquivo-invalido': 'Não consegui abrir este arquivo. Ele pode estar incompleto ou corrompido.',
   drm: 'Este livro está protegido pela loja onde foi comprado (DRM) e só abre no app dela.',
   'arquivo-inacessivel': 'Não encontrei o arquivo. Ele pode ter sido movido ou apagado.',
+  'protegido-por-senha': 'Este PDF está protegido por senha. Abra-o no programa onde ele foi criado, salve sem senha e tente de novo.',
 }
 
 const erro = (codigo: CodigoErroImportacao): ResultadoImportacao => ({
@@ -35,12 +47,38 @@ const ehPdf = (b: Uint8Array) => b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44
 
 const ID_VALIDO = /^[0-9a-f-]{36}$/i
 
+const TIPOS_DE_CAPA: [string, (b: Uint8Array) => boolean][] = [
+  ['jpg', b => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
+  ['png', b => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47],
+  ['webp', b => b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50],
+]
+const TAMANHO_MAXIMO_DA_CAPA = 5 * 1024 * 1024
+
+/** O que cada formato entrega para virar um livro da biblioteca. */
+interface Preparado {
+  titulo: string | null
+  autores: string[]
+  idioma: string | null
+  identificadores: Identificadores
+  arquivoOriginal: string
+  arquivoLeitura: string | null
+  capa: string | null
+  arquivos: { nome: string; bytes: Uint8Array }[]
+}
+
+class ErroDeImportacao extends Error {
+  constructor(readonly codigo: CodigoErroImportacao) {
+    super(codigo)
+  }
+}
+
 export class Biblioteca {
   readonly #pastaLivros: string
 
   constructor(
     pastaDados: string,
     private readonly banco: Banco,
+    private readonly converterPdf: ConversorDePdf = converterPdfEmEpub,
   ) {
     this.#pastaLivros = resolve(pastaDados, 'livros')
   }
@@ -79,45 +117,42 @@ export class Biblioteca {
       return erro('arquivo-inacessivel')
     }
 
-    if (!ehZip(bytes) && !ehPdf(bytes)) return erro('formato-nao-suportado')
-    // O PDF chega na etapa 2.
-    if (ehPdf(bytes)) return erro('formato-nao-suportado')
+    const formato = ehZip(bytes) ? 'epub' : ehPdf(bytes) ? 'pdf' : null
+    if (!formato) return erro('formato-nao-suportado')
 
     const hashSha256 = createHash('sha256').update(bytes).digest('hex')
     const existente = this.banco.obterPorHash(hashSha256)
     if (existente) return { tipo: 'repetido', livro: existente }
 
-    let metadados
+    const id = randomUUID()
+    let preparado: Preparado
     try {
-      metadados = lerEpub(bytes)
+      preparado =
+        formato === 'epub'
+          ? this.#prepararEpub(bytes)
+          : await this.#prepararPdf(bytes, id, tituloDoNomeDoArquivo(caminho), aoAndamento)
     } catch (e) {
-      if (e instanceof ErroEpub) return erro(e.codigo)
+      if (e instanceof ErroEpub || e instanceof ErroDeImportacao) return erro(e.codigo)
       throw e
     }
 
     aoAndamento?.({ etapa: 'guardando' })
-    const id = randomUUID()
     const pastaDoLivro = join(this.#pastaLivros, id)
     try {
       await mkdir(pastaDoLivro, { recursive: true })
-      await writeFile(join(pastaDoLivro, 'original.epub'), bytes)
-      let capa: string | null = null
-      if (metadados.capa) {
-        capa = `capa.${metadados.capa.extensao}`
-        await writeFile(join(pastaDoLivro, capa), metadados.capa.bytes)
-      }
+      for (const arquivo of preparado.arquivos) await writeFile(join(pastaDoLivro, arquivo.nome), arquivo.bytes)
       const livro = this.banco.inserirLivro({
         id,
-        titulo: metadados.titulo ?? tituloDoNomeDoArquivo(caminho),
-        autores: metadados.autores,
-        idioma: metadados.idioma,
-        formatoOriginal: 'epub',
-        arquivoOriginal: 'original.epub',
-        arquivoLeitura: 'original.epub',
-        capa,
+        titulo: preparado.titulo ?? tituloDoNomeDoArquivo(caminho),
+        autores: preparado.autores,
+        idioma: preparado.idioma,
+        formatoOriginal: formato,
+        arquivoOriginal: preparado.arquivoOriginal,
+        arquivoLeitura: preparado.arquivoLeitura,
+        capa: preparado.capa,
         hashSha256,
         tamanhoBytes: bytes.length,
-        identificadores: metadados.identificadores,
+        identificadores: preparado.identificadores,
         estado: 'pronto',
         adicionadoEm: new Date().toISOString(),
       })
@@ -126,6 +161,67 @@ export class Biblioteca {
       await rm(pastaDoLivro, { recursive: true, force: true })
       throw e
     }
+  }
+
+  #prepararEpub(bytes: Uint8Array): Preparado {
+    const metadados = lerEpub(bytes)
+    const capa = metadados.capa ? `capa.${metadados.capa.extensao}` : null
+    return {
+      titulo: metadados.titulo,
+      autores: metadados.autores,
+      idioma: metadados.idioma,
+      identificadores: metadados.identificadores,
+      arquivoOriginal: 'original.epub',
+      arquivoLeitura: 'original.epub',
+      capa,
+      arquivos: [
+        { nome: 'original.epub', bytes },
+        ...(capa && metadados.capa ? [{ nome: capa, bytes: metadados.capa.bytes }] : []),
+      ],
+    }
+  }
+
+  async #prepararPdf(
+    bytes: Uint8Array,
+    id: string,
+    tituloReserva: string,
+    aoAndamento?: (a: AndamentoImportacao) => void,
+  ): Promise<Preparado> {
+    let resultado: ResultadoConversao
+    try {
+      resultado = await this.converterPdf(bytes, {
+        identificador: `urn:uuid:${id}`,
+        tituloReserva,
+        aoAndamento: (atual, total) => aoAndamento?.({ etapa: 'adaptando', atual, total }),
+      })
+    } catch (e) {
+      const nome = (e as { name?: string } | null)?.name
+      throw new ErroDeImportacao(nome === 'PasswordException' ? 'protegido-por-senha' : 'arquivo-invalido')
+    }
+    return {
+      titulo: resultado.titulo,
+      autores: resultado.autores,
+      idioma: resultado.idioma,
+      identificadores: { isbn: [], outros: [] },
+      arquivoOriginal: 'original.pdf',
+      arquivoLeitura: resultado.epub ? 'leitura.epub' : null,
+      capa: null,
+      arquivos: [
+        { nome: 'original.pdf', bytes },
+        ...(resultado.epub ? [{ nome: 'leitura.epub', bytes: resultado.epub }] : []),
+      ],
+    }
+  }
+
+  /** Guarda a capa (gerada pela interface a partir da primeira página do PDF). */
+  async salvarCapa(id: string, bytes: Uint8Array): Promise<Livro | null> {
+    const livro = ID_VALIDO.test(id) ? this.banco.obterLivro(id) : null
+    const tipo = TIPOS_DE_CAPA.find(([, eh]) => eh(bytes))?.[0]
+    if (!livro || !tipo || bytes.length > TAMANHO_MAXIMO_DA_CAPA) return null
+    const nome = `capa.${tipo}`
+    await writeFile(join(this.#pastaLivros, id, nome), bytes)
+    this.banco.atualizarLivro(id, { capa: nome })
+    return this.banco.obterLivro(id)
   }
 
   async remover(id: string) {

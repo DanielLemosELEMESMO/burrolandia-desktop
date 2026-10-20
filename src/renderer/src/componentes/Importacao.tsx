@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AndamentoImportacao, Livro, ResultadoImportacao } from '@nucleo/tipos'
-import { api } from '../api'
+import { api, urlDoArquivo } from '../api'
+import { gerarCapaDoPdf } from '../leitor/pdf'
 import { Capa } from './Capa'
 import { Dialogo } from './Dialogo'
 import { Icone } from './Icone'
@@ -15,6 +16,18 @@ type Estado =
   | { fase: 'erro'; mensagem: string }
 
 const FALHA_INESPERADA = 'Algo deu errado ao adicionar o livro. Tente de novo; se continuar, reinicie o app.'
+
+/** PDFs chegam sem capa: a primeira página vira a capa. Se falhar, fica a capa tipográfica. */
+async function comCapa(livro: Livro): Promise<Livro> {
+  if (livro.formatoOriginal !== 'pdf' || livro.capa) return livro
+  try {
+    const imagem = await gerarCapaDoPdf(urlDoArquivo(livro, livro.arquivoOriginal))
+    return (await api.biblioteca.salvarCapa(livro.id, imagem)) ?? livro
+  } catch (e) {
+    console.warn('Não deu para gerar a capa do PDF', e)
+    return livro
+  }
+}
 
 export function useImportacao(aoMudarBiblioteca: () => void) {
   const [estado, setEstado] = useState<Estado>({ fase: 'ocioso' })
@@ -29,13 +42,20 @@ export function useImportacao(aoMudarBiblioteca: () => void) {
   )
 
   const concluir = useCallback(
-    (resultado: ResultadoImportacao | null) => {
-      importando.current = false
-      if (!resultado) return setEstado({ fase: 'ocioso' })
+    async (resultado: ResultadoImportacao | null) => {
+      if (!resultado) {
+        importando.current = false
+        return setEstado({ fase: 'ocioso' })
+      }
       if (resultado.tipo === 'adicionado') {
+        const livro = await comCapa(resultado.livro)
+        importando.current = false
         aoMudarBiblioteca()
-        setEstado({ fase: 'fim', livro: resultado.livro })
-      } else if (resultado.tipo === 'repetido') setEstado({ fase: 'repetido', livro: resultado.livro })
+        setEstado({ fase: 'fim', livro })
+        return
+      }
+      importando.current = false
+      if (resultado.tipo === 'repetido') setEstado({ fase: 'repetido', livro: resultado.livro })
       else setEstado({ fase: 'erro', mensagem: resultado.mensagem })
     },
     [aoMudarBiblioteca],
@@ -46,7 +66,7 @@ export function useImportacao(aoMudarBiblioteca: () => void) {
       if (importando.current) return
       importando.current = true
       try {
-        concluir(await acao())
+        await concluir(await acao())
       } catch (e) {
         console.error(e)
         importando.current = false

@@ -4,6 +4,7 @@ import { app, BrowserWindow, Menu, nativeTheme, screen, shell } from 'electron'
 import type { Preferencias } from '@nucleo/tipos'
 import { Banco } from './banco'
 import { Biblioteca } from './biblioteca'
+import { converterEmProcessoSeparado } from './conversorPdf'
 import { lerPreferencias, registrarIpc } from './ipc'
 import { ORIGEM, caminhoDaInterface, registrarEsquema, tratarProtocolo, urlDaInterface } from './protocolo'
 
@@ -104,7 +105,7 @@ if (!app.requestSingleInstanceLock()) {
     const pastaDados = app.getPath('userData')
     mkdirSync(pastaDados, { recursive: true })
     banco = new Banco(join(pastaDados, 'burrolandia.db'))
-    const biblioteca = new Biblioteca(pastaDados, banco)
+    const biblioteca = new Biblioteca(pastaDados, banco, converterEmProcessoSeparado)
     const bancoAberto = banco
 
     tratarProtocolo(biblioteca, caminhoDaInterface(__dirname))

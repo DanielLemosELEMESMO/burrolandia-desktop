@@ -16,6 +16,8 @@ export interface ApiBurrolandia {
     adicionar(): Promise<ResultadoImportacao | null>
     importar(caminho: string): Promise<ResultadoImportacao>
     remover(id: string): Promise<void>
+    /** Guarda a capa gerada pela interface (primeira página de um PDF). */
+    salvarCapa(id: string, imagem: Uint8Array): Promise<Livro | null>
     /** Caminho no disco de um arquivo arrastado para a janela. */
     caminhoDoArquivo(arquivo: File): string
     aoAndamento(quando: (andamento: AndamentoImportacao) => void): () => void

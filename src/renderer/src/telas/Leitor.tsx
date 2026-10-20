@@ -1,5 +1,6 @@
 // O leitor: só o livro na tela; as barras aparecem quando você mexe o mouse ou usa o teclado.
-// A posição é salva sozinha a cada mudança.
+// A posição é salva sozinha a cada mudança. Nos PDFs, dá para alternar entre o texto adaptado
+// e a página original, sem perder a página.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import literataNormal from '@fontsource-variable/literata/files/literata-latin-wght-normal.woff2?url'
@@ -7,13 +8,22 @@ import literataItalico from '@fontsource-variable/literata/files/literata-latin-
 import atkinsonNormal from '@fontsource-variable/atkinson-hyperlegible-next/files/atkinson-hyperlegible-next-latin-wght-normal.woff2?url'
 import atkinsonItalico from '@fontsource-variable/atkinson-hyperlegible-next/files/atkinson-hyperlegible-next-latin-wght-italic.woff2?url'
 import { faltaNoCapitulo } from '@nucleo/tempo'
-import { TAMANHO_MAXIMO, TAMANHO_MINIMO, type Livro, type Locator, type Preferencias, type TemaEfetivo } from '@nucleo/tipos'
+import {
+  paginaDoLocator,
+  TAMANHO_MAXIMO,
+  TAMANHO_MINIMO,
+  type Livro,
+  type Locator,
+  type Preferencias,
+  type TemaEfetivo,
+} from '@nucleo/tipos'
 import { api, urlDoArquivo } from '../api'
 import { AjustesLeitura } from '../componentes/AjustesLeitura'
 import { Icone } from '../componentes/Icone'
 import { Sumario } from '../componentes/Sumario'
 import { atributosDoLayout, estiloDoLivro, type FontesLocais } from '../leitor/estiloDoLivro'
-import { criarVisao, type DetalheRelocate, type ItemDoSumario, type VisaoFoliate } from '../leitor/foliate'
+import { criarVisao, type DetalheRelocate, type ItemDoSumario, type LivroFoliate, type VisaoFoliate } from '../leitor/foliate'
+import { PaginaOriginal, type ControleDaPaginaOriginal } from '../leitor/PaginaOriginal'
 import { usarMidia } from '../usarMidia'
 
 const absoluta = (url: string) => new URL(url, location.href).href
@@ -26,8 +36,42 @@ const ESPERA_PARA_ESCONDER = 2500
 const ESPERA_PARA_SALVAR = 300
 
 type Painel = null | 'sumario' | 'ajustes'
+type Modo = 'texto' | 'original'
+
+interface OndeNoOriginal {
+  numero: number
+  rotulo: string
+  total: number
+}
 
 const limitar = (x: number) => Math.min(1, Math.max(0, x))
+
+const numeroDaAncora = (href: string | undefined) => Number(href?.match(/#pagina-(\d+)$/)?.[1]) || null
+
+/** O endereço, no texto adaptado, de onde começa a página N do PDF (ou a anterior mais próxima). */
+function hrefDaPagina(livro: LivroFoliate, numero: number): string | null {
+  let melhor: string | null = null
+  let melhorNumero = 0
+  for (const item of livro.pageList ?? []) {
+    const n = numeroDaAncora(item.href)
+    if (n && n <= numero && n > melhorNumero) {
+      melhor = item.href
+      melhorNumero = n
+    }
+  }
+  return melhor
+}
+
+const chaveDoModo = (id: string) => `burrolandia:modo:${id}`
+
+function modoInicial(livro: Livro): Modo {
+  if (!livro.arquivoLeitura) return 'original'
+  try {
+    return localStorage.getItem(chaveDoModo(livro.id)) === 'original' ? 'original' : 'texto'
+  } catch {
+    return 'texto'
+  }
+}
 
 function paraLocator(visao: VisaoFoliate, d: DetalheRelocate): Locator {
   const indice = d.section?.current ?? 0
@@ -35,11 +79,13 @@ function paraLocator(visao: VisaoFoliate, d: DetalheRelocate): Locator {
   const inicio = fracoes[indice] ?? 0
   const fim = fracoes[indice + 1] ?? 1
   const trecho = d.range?.toString().replace(/\s+/g, ' ').trim().slice(0, 200)
+  const pagina = numeroDaAncora(d.pageItem?.href)
   return {
     href: visao.book.sections[indice]?.id ?? '',
     type: 'application/xhtml+xml',
     title: d.tocItem?.label?.trim() || undefined,
     locations: {
+      fragments: pagina ? [`pagina-${pagina}`] : undefined,
       progression: fim > inicio ? limitar((d.fraction - inicio) / (fim - inicio)) : 0,
       totalProgression: limitar(d.fraction),
       position: d.location ? d.location.current + 1 : undefined,
@@ -65,8 +111,14 @@ export function TelaLeitor({
 }) {
   const host = useRef<HTMLDivElement>(null)
   const visao = useRef<VisaoFoliate | null>(null)
-  const [estado, setEstado] = useState<'abrindo' | 'pronto' | 'erro'>('abrindo')
+  const original = useRef<ControleDaPaginaOriginal>(null)
+  const temTexto = !!livro.arquivoLeitura
+  const ehPdf = livro.formatoOriginal === 'pdf'
+  const [modo, setModo] = useState<Modo>(() => modoInicial(livro))
+  const [estado, setEstado] = useState<'abrindo' | 'pronto' | 'erro'>(temTexto ? 'abrindo' : 'pronto')
   const [onde, setOnde] = useState<DetalheRelocate | null>(null)
+  const [ondeNoOriginal, setOndeNoOriginal] = useState<OndeNoOriginal | null>(null)
+  const [paginaParaAbrir, setPaginaParaAbrir] = useState(() => paginaDoLocator(livro.posicao) ?? 1)
   const [sumario, setSumario] = useState<ItemDoSumario[]>([])
   const [painel, setPainel] = useState<Painel>(null)
   const [barras, setBarras] = useState(true)
@@ -77,9 +129,23 @@ export function TelaLeitor({
   preferenciasAtuais.current = preferencias
   const painelAtual = useRef<Painel>(painel)
   painelAtual.current = painel
+  const modoAtual = useRef<Modo>(modo)
+  modoAtual.current = modo
   const ultimaPosicao = useRef<Locator | null>(null)
   const salvamento = useRef<number | undefined>(undefined)
   const esconder = useRef<number | undefined>(undefined)
+
+  const guardarPosicao = useCallback(
+    (locator: Locator) => {
+      ultimaPosicao.current = locator
+      window.clearTimeout(salvamento.current)
+      salvamento.current = window.setTimeout(() => {
+        salvamento.current = undefined
+        void api.leitura.salvarPosicao(livro.id, locator)
+      }, ESPERA_PARA_SALVAR)
+    },
+    [livro.id],
+  )
 
   const salvarAgora = useCallback(() => {
     if (salvamento.current === undefined || !ultimaPosicao.current) return
@@ -99,16 +165,26 @@ export function TelaLeitor({
 
   const mudarTamanho = useCallback(
     (passo: number) => {
+      if (modoAtual.current === 'original') return original.current?.zoom(passo)
       const tamanho = preferenciasAtuais.current.tamanho + passo
       if (tamanho >= TAMANHO_MINIMO && tamanho <= TAMANHO_MAXIMO) aoMudarPreferencias({ tamanho })
     },
     [aoMudarPreferencias],
   )
 
+  const avancar = useCallback(() => {
+    if (modoAtual.current === 'original') original.current?.proxima()
+    else void visao.current?.next()
+  }, [])
+
+  const voltar = useCallback(() => {
+    if (modoAtual.current === 'original') original.current?.anterior()
+    else void visao.current?.prev()
+  }, [])
+
   const teclas = useCallback(
     (e: KeyboardEvent) => {
-      const v = visao.current
-      if (!v || painelAtual.current) return
+      if (painelAtual.current) return
       if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=')) {
         e.preventDefault()
         return mudarTamanho(1)
@@ -120,42 +196,38 @@ export function TelaLeitor({
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const alvo = e.target as Element | null
       const emControle = alvo?.ownerDocument === document && !!alvo.closest?.('button, input, select, textarea, a')
-      const rtl = v.book.dir === 'rtl'
+      const rtl = modoAtual.current === 'texto' && visao.current?.book.dir === 'rtl'
       switch (e.key) {
         case 'ArrowRight':
+          if (emControle && alvo?.matches('input')) return
           e.preventDefault()
-          void (rtl ? v.prev() : v.next())
-          break
+          return rtl ? voltar() : avancar()
         case 'ArrowLeft':
+          if (emControle && alvo?.matches('input')) return
           e.preventDefault()
-          void (rtl ? v.next() : v.prev())
-          break
+          return rtl ? avancar() : voltar()
         case 'PageDown':
           e.preventDefault()
-          void v.next()
-          break
+          return avancar()
         case 'PageUp':
           e.preventDefault()
-          void v.prev()
-          break
+          return voltar()
         case ' ':
           if (emControle) return
           e.preventDefault()
-          void (e.shiftKey ? v.prev() : v.next())
-          break
+          return e.shiftKey ? voltar() : avancar()
         case 'Tab':
           mostrarBarras()
-          break
       }
     },
-    [mudarTamanho, mostrarBarras],
+    [mudarTamanho, mostrarBarras, avancar, voltar],
   )
 
-  // A roda do mouse vira a página no modo Páginas.
+  // A roda do mouse vira a página no modo Páginas do texto adaptado.
   const roda = useRef({ acumulado: 0, ultimaVirada: 0 })
   const aoRolar = useCallback((e: WheelEvent) => {
     const v = visao.current
-    if (!v || painelAtual.current || preferenciasAtuais.current.fluxo !== 'paginas') return
+    if (!v || painelAtual.current || modoAtual.current !== 'texto' || preferenciasAtuais.current.fluxo !== 'paginas') return
     const agora = performance.now()
     if (agora - roda.current.ultimaVirada < 350) return
     roda.current.acumulado += Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX
@@ -166,27 +238,24 @@ export function TelaLeitor({
   }, [])
 
   // Clique nas margens vira a página; no meio, mostra ou esconde as barras.
-  const aoClicarNoLivro = useCallback(
-    (e: MouseEvent) => {
-      const v = visao.current
-      const caixa = host.current?.getBoundingClientRect()
-      if (!v || !caixa || e.defaultPrevented || e.button !== 0) return
-      const doc = (e.target as Node).ownerDocument
-      if (doc?.getSelection()?.toString()) return
-      if ((e.target as Element).closest?.('a, button, input, select, textarea, audio, video')) return
-      const quadro = doc?.defaultView?.frameElement as HTMLElement | null | undefined
-      const x = (quadro?.getBoundingClientRect().left ?? 0) + e.clientX
-      const relativo = (x - caixa.left) / caixa.width
-      const paginas = preferenciasAtuais.current.fluxo === 'paginas'
-      if (paginas && relativo < 0.25) void v.prev()
-      else if (paginas && relativo > 0.75) void v.next()
-      else {
-        setBarras(b => !b)
-        window.clearTimeout(esconder.current)
-      }
-    },
-    [],
-  )
+  const aoClicarNoLivro = useCallback((e: MouseEvent) => {
+    const v = visao.current
+    const caixa = host.current?.getBoundingClientRect()
+    if (!v || !caixa || e.defaultPrevented || e.button !== 0) return
+    const doc = (e.target as Node).ownerDocument
+    if (doc?.getSelection()?.toString()) return
+    if ((e.target as Element).closest?.('a, button, input, select, textarea, audio, video')) return
+    const quadro = doc?.defaultView?.frameElement as HTMLElement | null | undefined
+    const x = (quadro?.getBoundingClientRect().left ?? 0) + e.clientX
+    const relativo = (x - caixa.left) / caixa.width
+    const paginas = preferenciasAtuais.current.fluxo === 'paginas'
+    if (paginas && relativo < 0.25) void v.prev()
+    else if (paginas && relativo > 0.75) void v.next()
+    else {
+      setBarras(b => !b)
+      window.clearTimeout(esconder.current)
+    }
+  }, [])
 
   const aplicarAparencia = useCallback(() => {
     const v = visao.current
@@ -199,8 +268,9 @@ export function TelaLeitor({
     v.renderer.setStyles(estiloDoLivro(preferenciasAtuais.current, tema, FONTES))
   }, [tema, movimentoReduzido])
 
-  // Abre o livro uma vez e volta para onde você parou.
+  // Abre o texto (EPUB, ou o texto adaptado do PDF) uma vez e volta para onde você parou.
   useEffect(() => {
+    if (!livro.arquivoLeitura) return
     let ativo = true
     const elemento = criarVisao()
     elemento.setAttribute('autohide-cursor', '')
@@ -210,13 +280,7 @@ export function TelaLeitor({
     const aoRelocar = (e: Event) => {
       const detalhe = (e as CustomEvent<DetalheRelocate>).detail
       setOnde(detalhe)
-      const locator = paraLocator(elemento, detalhe)
-      ultimaPosicao.current = locator
-      window.clearTimeout(salvamento.current)
-      salvamento.current = window.setTimeout(() => {
-        salvamento.current = undefined
-        void api.leitura.salvarPosicao(livro.id, locator)
-      }, ESPERA_PARA_SALVAR)
+      if (modoAtual.current === 'texto') guardarPosicao(paraLocator(elemento, detalhe))
     }
     const aoCarregarSecao = (e: Event) => {
       const { doc } = (e as CustomEvent<{ doc: Document }>).detail
@@ -230,17 +294,20 @@ export function TelaLeitor({
 
     void (async () => {
       try {
-        const resposta = await fetch(urlDoArquivo(livro, livro.arquivoLeitura ?? livro.arquivoOriginal))
+        const resposta = await fetch(urlDoArquivo(livro, livro.arquivoLeitura!))
         if (!resposta.ok) throw new Error(`O arquivo do livro não abriu (${resposta.status})`)
         const arquivo = new File([await resposta.blob()], 'livro.epub', { type: 'application/epub+zip' })
         await elemento.open(arquivo)
         if (!ativo) return
         setSumario(elemento.book.toc ?? [])
         aplicarAparencia()
-        const cfi = livro.posicao?.locations.cfi
-        const fracao = livro.posicao?.locations.totalProgression
+        const posicao = livro.posicao
+        const cfi = posicao?.locations.cfi
+        const pagina = paginaDoLocator(posicao)
+        const hrefDaPaginaSalva = pagina ? hrefDaPagina(elemento.book, pagina) : null
         if (cfi && elemento.resolveNavigation(cfi)) await elemento.init({ lastLocation: cfi })
-        else if (fracao) await elemento.goToFraction(fracao)
+        else if (hrefDaPaginaSalva) await elemento.goTo(hrefDaPaginaSalva)
+        else if (posicao?.locations.totalProgression) await elemento.goToFraction(posicao.locations.totalProgression)
         else await elemento.init({ showTextStart: true })
         if (ativo) setEstado('pronto')
       } catch (erro) {
@@ -290,15 +357,62 @@ export function TelaLeitor({
     }
   }, [livro.titulo, mostrarBarras])
 
-  const porcentagem = Math.round((onde?.fraction ?? livro.progresso) * 100)
+  const aoMudarPaginaOriginal = useCallback(
+    (numero: number, rotulo: string, total: number) => {
+      setOndeNoOriginal({ numero, rotulo, total })
+      if (modoAtual.current !== 'original') return
+      guardarPosicao({
+        href: livro.arquivoOriginal,
+        type: 'application/pdf',
+        locations: {
+          fragments: [`page=${numero}`],
+          totalProgression: total > 1 ? (numero - 1) / (total - 1) : 0,
+          pagina: rotulo,
+        },
+      })
+    },
+    [livro.arquivoOriginal, guardarPosicao],
+  )
+
+  const aoFalharOriginal = useCallback(() => setEstado('erro'), [])
+
+  const mudarModo = (novo: Modo) => {
+    if (novo === modo) return
+    if (novo === 'original') {
+      setPaginaParaAbrir(numeroDaAncora(onde?.pageItem?.href) ?? paginaDoLocator(ultimaPosicao.current) ?? 1)
+    } else {
+      const v = visao.current
+      const numero = ondeNoOriginal?.numero
+      const href = v && numero ? hrefDaPagina(v.book, numero) : null
+      if (href) void v!.goTo(href)
+    }
+    setModo(novo)
+    try {
+      localStorage.setItem(chaveDoModo(livro.id), novo)
+    } catch {
+      // Sem armazenamento local, o modo só não fica lembrado.
+    }
+  }
+
+  const noOriginal = modo === 'original'
+  const porcentagem = Math.round(
+    (noOriginal
+      ? ondeNoOriginal && ondeNoOriginal.total > 1
+        ? (ondeNoOriginal.numero - 1) / (ondeNoOriginal.total - 1)
+        : 0
+      : (onde?.fraction ?? livro.progresso)) * 100,
+  )
   const capitulo = onde?.tocItem?.label?.trim()
-  const paginas = preferencias.fluxo === 'paginas'
+  const pagina = noOriginal ? ondeNoOriginal?.rotulo : onde?.pageItem?.label
+  const paginas = preferencias.fluxo === 'paginas' || noOriginal
 
   return (
     <main
       className="leitor"
       aria-label={`Lendo ${livro.titulo}`}
       data-cfi={onde?.cfi}
+      data-pagina={pagina}
+      data-modo={modo}
       data-barras={barras || painel ? 'visiveis' : 'ocultas'}
       onMouseMove={mostrarBarras}
     >
@@ -308,19 +422,61 @@ export function TelaLeitor({
         </button>
         <div className="leitor-titulo">
           <span className="leitor-nome">{livro.titulo}</span>
-          {capitulo && <span className="leitor-capitulo">{capitulo}</span>}
+          {!noOriginal && capitulo && <span className="leitor-capitulo">{capitulo}</span>}
         </div>
-        <button type="button" className="botao-icone" aria-label="Sumário" onClick={() => setPainel('sumario')}>
-          <Icone nome="sumario" />
-        </button>
+        {ehPdf && temTexto && (
+          <div className="alternar-modo" role="radiogroup" aria-label="Como ver o livro">
+            {(
+              [
+                ['texto', 'Texto adaptado'],
+                ['original', 'Página original'],
+              ] as const
+            ).map(([valor, rotulo]) => (
+              <label key={valor} className="segmento">
+                <input
+                  type="radio"
+                  name="modo-de-leitura"
+                  checked={modo === valor}
+                  onChange={() => mudarModo(valor)}
+                  // Depois de um clique, as setas voltam a virar a página em vez de trocar o modo.
+                  onClick={e => e.detail > 0 && e.currentTarget.blur()}
+                />
+                <span>{rotulo}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        {temTexto && (
+          <button type="button" className="botao-icone" aria-label="Sumário" onClick={() => setPainel('sumario')}>
+            <Icone nome="sumario" />
+          </button>
+        )}
         <button type="button" className="botao-icone botao-aa" aria-label="Ajustes de leitura" onClick={() => setPainel('ajustes')}>
           Aa
         </button>
       </header>
 
-      <div className="leitor-livro" ref={host} onWheel={e => aoRolar(e.nativeEvent)} />
+      <div className="leitor-livro" ref={host} data-oculto={noOriginal || undefined} onWheel={e => aoRolar(e.nativeEvent)} />
 
-      {estado === 'abrindo' && (
+      {noOriginal && (
+        <div className="leitor-original">
+          <PaginaOriginal
+            url={urlDoArquivo(livro, livro.arquivoOriginal)}
+            paginaInicial={paginaParaAbrir}
+            controle={original}
+            aoMudarPagina={aoMudarPaginaOriginal}
+            aoFalhar={aoFalharOriginal}
+          />
+        </div>
+      )}
+
+      {!temTexto && (
+        <p className="leitor-nota" role="note">
+          Este PDF é uma imagem digitalizada, então ele abre como foi impresso. Ainda não dá para adaptar o texto à tela.
+        </p>
+      )}
+
+      {estado === 'abrindo' && !noOriginal && (
         <p className="leitor-aviso" role="status">
           Abrindo o livro…
         </p>
@@ -338,20 +494,10 @@ export function TelaLeitor({
 
       {paginas && estado === 'pronto' && (
         <>
-          <button
-            type="button"
-            className="leitor-barra virar virar-anterior"
-            aria-label="Página anterior"
-            onClick={() => void visao.current?.prev()}
-          >
+          <button type="button" className="leitor-barra virar virar-anterior" aria-label="Página anterior" onClick={voltar}>
             <Icone nome="voltar" />
           </button>
-          <button
-            type="button"
-            className="leitor-barra virar virar-proxima"
-            aria-label="Próxima página"
-            onClick={() => void visao.current?.next()}
-          >
+          <button type="button" className="leitor-barra virar virar-proxima" aria-label="Próxima página" onClick={avancar}>
             <Icone nome="avancar" />
           </button>
         </>
@@ -362,22 +508,41 @@ export function TelaLeitor({
           <i style={{ width: `${porcentagem}%` }} />
         </div>
         <div className="rodape-textos">
-          <span className="rodape-capitulo">{capitulo ?? ''}</span>
-          <span>{onde?.time ? faltaNoCapitulo(onde.time.section) : ''}</span>
+          {noOriginal ? (
+            <>
+              <span>{ondeNoOriginal ? `Página ${ondeNoOriginal.rotulo} de ${ondeNoOriginal.total}` : ''}</span>
+              <span className="rodape-zoom">
+                <button type="button" className="botao-icone" aria-label="Diminuir a página" onClick={() => original.current?.zoom(-1)}>
+                  −
+                </button>
+                <button type="button" className="botao-icone" aria-label="Aumentar a página" onClick={() => original.current?.zoom(1)}>
+                  +
+                </button>
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="rodape-capitulo">{capitulo ?? ''}</span>
+              <span>{onde?.time ? faltaNoCapitulo(onde.time.section) : ''}</span>
+            </>
+          )}
           <span>{porcentagem}% do livro</span>
         </div>
       </footer>
 
-      <Sumario
-        aberto={painel === 'sumario'}
-        aoFechar={() => setPainel(null)}
-        itens={sumario}
-        atual={onde?.tocItem?.href}
-        aoIr={href => {
-          setPainel(null)
-          void visao.current?.goTo(href)
-        }}
-      />
+      {temTexto && (
+        <Sumario
+          aberto={painel === 'sumario'}
+          aoFechar={() => setPainel(null)}
+          itens={sumario}
+          atual={onde?.tocItem?.href}
+          aoIr={href => {
+            setPainel(null)
+            if (noOriginal) mudarModo('texto')
+            void visao.current?.goTo(href)
+          }}
+        />
+      )}
       <AjustesLeitura
         aberto={painel === 'ajustes'}
         aoFechar={() => setPainel(null)}

@@ -36,6 +36,13 @@ npm run dist:win   # gera o instalador e o portátil em release/ (rode no Window
 
 Num Linux sem tela (como o ambiente na nuvem), use `xvfb-run -a npm run e2e`.
 
+Para testar o app empacotado (como o usuário recebe), gere a versão Linux e aponte os testes para ela:
+
+```bash
+npx electron-builder --linux dir --publish never
+BURROLANDIA_EXECUTAVEL=$PWD/release/linux-unpacked/burrolandia-desktop xvfb-run -a npx playwright test
+```
+
 Capturas das telas principais:
 
 ```bash
@@ -59,3 +66,6 @@ tests/
 
 - **Local primeiro**: tudo funciona sem internet e sem conta. A sincronização (Supabase) vem na parte 2.
 - **Formatos portáteis**: todo livro vira EPUB e a posição segue o Locator do Readium, para o app de celular entender a mesma posição.
+- **PDF**: na importação, um processo separado (`src/main/conversor.ts`) converte o PDF num EPUB, o "texto adaptado" (`src/nucleo/pdf`): junta linhas em parágrafos, desfaz a hifenização, tira cabeçalhos e números de página, lê duas colunas na ordem e divide em capítulos pelos marcadores do PDF ou pelos títulos. Cada página do original vira uma marca no EPUB, e assim o leitor alterna entre o texto adaptado e a página original sem perder a página. PDF digitalizado (só imagem) abre na página original.
+
+Os PDFs de teste são gerados pelo próprio Electron (`tests/fixtures/gerar-pdfs.cjs`) e ficam no repositório.

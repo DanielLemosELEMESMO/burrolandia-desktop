@@ -56,6 +56,12 @@ describe('validarLocator', () => {
     ).toEqual({ ...valido, locations: { totalProgression: 0.2 } })
   })
 
+  it('aceita fragmentos, como a página de um PDF', () => {
+    expect(validarLocator({ ...valido, locations: { fragments: ['page=12', 7, 'pagina-12'] } })?.locations).toEqual({
+      fragments: ['page=12', 'pagina-12'],
+    })
+  })
+
   it('corta textos longos demais', () => {
     const longo = 'a'.repeat(5000)
     expect(validarLocator({ ...valido, text: { highlight: longo } })?.text?.highlight).toHaveLength(500)

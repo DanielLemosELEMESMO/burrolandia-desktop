@@ -6,13 +6,24 @@ export type EstadoLivro = 'pronto' | 'processando' | 'erro'
 /**
  * Onde você está no livro. Segue o Locator do Readium
  * (https://readium.org/architecture/models/locators/), para o celular entender a mesma posição.
- * Extensões: `locations.cfi` (EPUB CFI completo) e `locations.pagina` (página do PDF original).
+ * Extensões: `locations.cfi` (EPUB CFI completo) e `locations.pagina` (rótulo da página do PDF original).
  */
+
+/** A página do PDF original indicada por um Locator (pelos fragmentos page=N ou pagina-N). */
+export function paginaDoLocator(locator: Pick<Locator, 'locations'> | null | undefined): number | null {
+  for (const fragmento of locator?.locations.fragments ?? []) {
+    const numero = Number(fragmento.match(/^(?:page=|pagina-)(\d+)$/)?.[1])
+    if (numero > 0) return numero
+  }
+  return null
+}
 export interface Locator {
   href: string
   type: string
   title?: string
   locations: {
+    /** Num PDF, ["page=12"]; no texto adaptado, ["pagina-12"] (a âncora da página 12 do original). */
+    fragments?: string[]
     progression?: number
     totalProgression?: number
     position?: number
@@ -83,7 +94,12 @@ export interface Sessao {
   livroAberto: string | null
 }
 
-export type CodigoErroImportacao = 'formato-nao-suportado' | 'arquivo-invalido' | 'drm' | 'arquivo-inacessivel'
+export type CodigoErroImportacao =
+  | 'formato-nao-suportado'
+  | 'arquivo-invalido'
+  | 'drm'
+  | 'arquivo-inacessivel'
+  | 'protegido-por-senha'
 
 export type ResultadoImportacao =
   | { tipo: 'adicionado'; livro: Livro }

@@ -131,6 +131,27 @@ export class Banco {
       .run(JSON.stringify(posicao), progresso, new Date().toISOString(), id)
   }
 
+  atualizarLivro(id: string, campos: Partial<Pick<Livro, 'capa' | 'titulo' | 'autores'>>) {
+    const colunas: string[] = []
+    const valores: (string | null)[] = []
+    if ('capa' in campos) {
+      colunas.push('capa = ?')
+      valores.push(campos.capa ?? null)
+    }
+    if (campos.titulo !== undefined) {
+      colunas.push('titulo = ?')
+      valores.push(campos.titulo)
+    }
+    if (campos.autores !== undefined) {
+      colunas.push('autores = ?')
+      valores.push(JSON.stringify(campos.autores))
+    }
+    if (!colunas.length) return
+    this.#db
+      .prepare(`UPDATE livros SET ${colunas.join(', ')}, atualizado_em = ? WHERE id = ?`)
+      .run(...valores, new Date().toISOString(), id)
+  }
+
   removerLivro(id: string) {
     this.#db.prepare('DELETE FROM livros WHERE id = ?').run(id)
   }

@@ -6,6 +6,10 @@ import { strToU8, zipSync } from 'fflate'
 import { Banco } from '../../src/main/banco'
 import { Biblioteca, tituloDoNomeDoArquivo } from '../../src/main/biblioteca'
 import { escreverEpub } from '@nucleo/epub/escrever'
+import { lerEpub } from '@nucleo/epub/ler'
+
+const pdfDeTeste = (nome: string) => new Uint8Array(readFileSync(join(__dirname, '../fixtures/pdf', nome)))
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46])
 
 const capa = strToU8('<svg xmlns="http://www.w3.org/2000/svg" width="6" height="9"/>')
 
@@ -122,6 +126,53 @@ describe('Biblioteca', () => {
     await biblioteca.remover(resultado.livro.id)
     expect(existsSync(pastaDoLivro)).toBe(false)
     expect(biblioteca.listar()).toEqual([])
+  })
+
+  it('adiciona um PDF: guarda o original e o texto adaptado em EPUB', async () => {
+    const resultado = await biblioteca.importar(arquivo('dom.pdf', pdfDeTeste('dom-casmurro-uma-coluna.pdf')))
+    if (resultado.tipo !== 'adicionado') throw new Error(`deveria ter adicionado: ${JSON.stringify(resultado)}`)
+    expect(resultado.livro).toMatchObject({
+      titulo: 'Dom Casmurro',
+      formatoOriginal: 'pdf',
+      arquivoOriginal: 'original.pdf',
+      arquivoLeitura: 'leitura.epub',
+      idioma: 'pt-BR',
+      capa: null,
+      estado: 'pronto',
+    })
+    const epub = readFileSync(biblioteca.caminhoDoArquivo(resultado.livro.id, 'leitura.epub')!)
+    expect(lerEpub(new Uint8Array(epub)).titulo).toBe('Dom Casmurro')
+    expect(biblioteca.caminhoDoArquivo(resultado.livro.id, 'original.pdf')).not.toBeNull()
+  })
+
+  it('conta o andamento da adaptação do PDF, página por página', async () => {
+    const andamento: string[] = []
+    await biblioteca.importar(arquivo('dom.pdf', pdfDeTeste('dom-casmurro-uma-coluna.pdf')), a =>
+      andamento.push(a.total ? `${a.etapa} ${a.atual}/${a.total}` : a.etapa),
+    )
+    expect(andamento).toEqual(['lendo', 'adaptando 1/3', 'adaptando 2/3', 'adaptando 3/3', 'guardando'])
+  })
+
+  it('um PDF digitalizado fica só com a página original', async () => {
+    const resultado = await biblioteca.importar(arquivo('scan.pdf', pdfDeTeste('digitalizado.pdf')))
+    expect(resultado).toMatchObject({
+      tipo: 'adicionado',
+      livro: { titulo: 'Digitalizado', formatoOriginal: 'pdf', arquivoLeitura: null },
+    })
+  })
+
+  it('guarda a capa gerada para um PDF', async () => {
+    const resultado = await biblioteca.importar(arquivo('dom.pdf', pdfDeTeste('dom-casmurro-uma-coluna.pdf')))
+    if (resultado.tipo !== 'adicionado') throw new Error('deveria ter adicionado')
+    const livro = await biblioteca.salvarCapa(resultado.livro.id, JPEG)
+    expect(livro?.capa).toBe('capa.jpg')
+    expect(readFileSync(biblioteca.caminhoDoArquivo(resultado.livro.id, 'capa.jpg')!)).toEqual(Buffer.from(JPEG))
+  })
+
+  it('recusa como capa o que não é imagem', async () => {
+    const resultado = await biblioteca.importar(arquivo('dom.epub', epub()))
+    if (resultado.tipo !== 'adicionado') throw new Error('deveria ter adicionado')
+    expect(await biblioteca.salvarCapa(resultado.livro.id, strToU8('<script>'))).toBeNull()
   })
 
   it('não entrega arquivos fora da pasta do livro', async () => {

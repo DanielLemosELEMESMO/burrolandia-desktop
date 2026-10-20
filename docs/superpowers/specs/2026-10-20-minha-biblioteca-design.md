@@ -1,6 +1,6 @@
 # Parte 1 — Minha biblioteca (desktop)
 
-Data: 20/10/2026 · Estado: em construção (o Daniel pediu para executar sem rodada de revisão da spec; este documento registra as decisões).
+Data: 20/10/2026 · Estado: etapas 1 e 2 entregues; etapa 3 depende de liberar a rede do ambiente (o Daniel pediu para executar sem rodada de revisão da spec; este documento registra as decisões).
 
 ## 1. Propósito
 
@@ -118,13 +118,18 @@ A etapa 3 acrescenta `obras` e `edicoes` (com ids do Open Library) e `livros.edi
 
 ## 7. Conversão PDF → EPUB (etapa 2)
 
-Roda num worker (sem travar a janela), com `pdfjs-dist`, em `src/nucleo/pdf`:
+Roda num processo utilitário do Electron (sem travar a janela), com `pdfjs-dist` empacotado nele, em `src/nucleo/pdf`:
 1. Extrai o texto de cada página com posição e tamanho da fonte.
 2. Monta linhas; descarta cabeçalhos e rodapés repetidos e números de página.
 3. Detecta colunas; junta linhas em parágrafos (espaçamento, recuo, pontuação final); desfaz hifenização de fim de linha.
 4. Títulos por tamanho de fonte; capítulos pelo sumário do PDF (outline) quando existe.
 5. Escreve EPUB 3 com `page-list`: cada página do PDF vira um marcador `epub:type="pagebreak"`, o que liga o texto adaptado à página original.
 6. PDF sem texto (escaneado) fica só com a página original e um aviso. OCR fica para depois.
+7. Página sem texto no meio de um PDF com texto vira um aviso no texto adaptado ("veja a página original").
+8. A capa do PDF é a primeira página, desenhada pela interface e guardada como JPEG.
+9. Posição no PDF: o Locator leva o fragmento `page=N` (página original) ou `pagina-N` (âncora no texto adaptado); um modo abre onde o outro parou.
+
+Limites conhecidos: imagens e tabelas do PDF não entram no texto adaptado (estão na página original); notas de rodapé entram como parágrafos; PDFs com layout muito livre (revistas) podem sair fora de ordem.
 
 ## 8. Testes e verificação
 

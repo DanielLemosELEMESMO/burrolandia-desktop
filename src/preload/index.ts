@@ -8,6 +8,7 @@ const api: ApiBurrolandia = {
     adicionar: () => ipcRenderer.invoke('biblioteca:adicionar'),
     importar: caminho => ipcRenderer.invoke('biblioteca:importar', caminho),
     remover: id => ipcRenderer.invoke('biblioteca:remover', id),
+    salvarCapa: (id, imagem) => ipcRenderer.invoke('biblioteca:salvar-capa', id, imagem),
     caminhoDoArquivo: arquivo => webUtils.getPathForFile(arquivo),
     aoAndamento: quando => {
       const ouvinte = (_: unknown, andamento: AndamentoImportacao) => quando(andamento)

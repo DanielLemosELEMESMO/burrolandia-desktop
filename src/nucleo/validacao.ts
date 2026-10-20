@@ -46,6 +46,9 @@ export function validarLocator(entrada: unknown): Locator | null {
       progression: fracao(l.progression),
       totalProgression: fracao(l.totalProgression),
       position: typeof l.position === 'number' && Number.isInteger(l.position) ? l.position : undefined,
+      fragments: Array.isArray(l.fragments)
+        ? l.fragments.filter((f): f is string => typeof f === 'string').slice(0, 10).map(f => f.slice(0, 200))
+        : undefined,
       cfi: texto(l.cfi, 2000),
       pagina: texto(l.pagina, 50),
     }),

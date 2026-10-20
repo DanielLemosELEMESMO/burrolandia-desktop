@@ -51,6 +51,11 @@ export function registrarIpc(banco: Banco, biblioteca: Biblioteca, aoMudarPrefer
     await biblioteca.remover(id)
   })
 
+  ipcMain.handle('biblioteca:salvar-capa', (_, id: unknown, imagem: unknown) => {
+    if (!idValido(id) || !(imagem instanceof Uint8Array)) return null
+    return biblioteca.salvarCapa(id, imagem)
+  })
+
   ipcMain.handle('leitura:abrir', (_, id: unknown) => {
     if (!idValido(id) || !biblioteca.obter(id)) return null
     biblioteca.marcarAberto(id)
