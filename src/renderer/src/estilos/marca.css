@@ -57,6 +57,11 @@
   animation: dock-entrar 0.22s ease;
 }
 
+/* O anel de foco cabe dentro da pílula, sem vazar ouro sobre o creme do leitor. */
+.dock :focus-visible {
+  outline-offset: 1px;
+}
+
 .dock-item {
   position: relative;
   display: grid;
@@ -69,7 +74,7 @@
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: #beadac;
+  color: var(--creme-suave);
   font: 600 12px/1 var(--ui);
   transition: background var(--transicao), color var(--transicao);
 }
@@ -146,7 +151,7 @@
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: #beadac;
+  color: var(--creme-suave);
 }
 
 .dock-recolher:hover {
@@ -171,7 +176,7 @@
   height: var(--alvo);
   border: 0;
   border-radius: 999px;
-  background: #3d1a3c;
+  background: var(--ameixa-elevada);
   color: var(--ouro);
   box-shadow:
     0 8px 22px rgb(47 14 47 / 40%),
@@ -195,7 +200,7 @@
   min-width: 64px;
   min-height: 46px;
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .dock-na-faixa .dock-item .icone {
@@ -206,7 +211,7 @@
 .dock-na-faixa .dock-importar {
   margin: 0 2px;
   gap: 3px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .dock-na-faixa .dock-importar-circulo {

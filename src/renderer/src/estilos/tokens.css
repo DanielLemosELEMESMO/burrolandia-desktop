@@ -4,7 +4,10 @@
 
    Duas famílias de superfície:
    - a da marca (.superficie-escura): ameixa, nas telas de biblioteca e no dock;
-   - a do tema de leitura (data-tema no <html>): leitor, painéis, diálogos e cartões de conforto. */
+   - a do tema de leitura (data-tema no <html>): leitor, painéis, diálogos e cartões de conforto.
+
+   Os HEX da marca e das páginas dos temas também estão em src/nucleo/cores.ts (para o processo
+   principal e o CSS de dentro do livro); tests/unit/cores.test.ts confere que batem. */
 
 :root {
   --ameixa: #2f0e2f;
@@ -12,6 +15,20 @@
   --ouro: #d4af7c;
   --lilas: #b9a7d9;
   --grafite: #1f1f24;
+
+  /* Tons derivados da ameixa, para a superfície escura. */
+  --ameixa-elevada: #3d1a3c;
+  --ameixa-hover: #45264a;
+  --creme-suave: #beadac;
+  --ameixa-borda: #937a87;
+
+  /* Página e texto de cada tema de leitura. */
+  --papel-pagina: #f6ebdd;
+  --papel-tinta: #1f1f24;
+  --sepia-pagina: #ebdcc2;
+  --sepia-tinta: #3a2a1c;
+  --noite-pagina: #1c101c;
+  --noite-tinta: #e8dccb;
 
   --display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
   --ui: 'Inter Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
@@ -28,9 +45,9 @@
 :root,
 [data-tema='papel'] {
   --t-esquema: light;
-  --t-fundo: #f6ebdd;
+  --t-fundo: var(--papel-pagina);
   --t-superficie: #fbf5ec;
-  --t-tinta: #1f1f24;
+  --t-tinta: var(--papel-tinta);
   --t-suave: #5e4f5a;
   --t-linha: #e4d5c4;
   --t-linha-forte: #8a7682;
@@ -45,9 +62,9 @@
 
 [data-tema='sepia'] {
   --t-esquema: light;
-  --t-fundo: #ebdcc2;
+  --t-fundo: var(--sepia-pagina);
   --t-superficie: #f3e7d3;
-  --t-tinta: #3a2a1c;
+  --t-tinta: var(--sepia-tinta);
   --t-suave: #6a5640;
   --t-linha: #d5c3a3;
   --t-linha-forte: #806c56;
@@ -62,9 +79,9 @@
 
 [data-tema='noite'] {
   --t-esquema: dark;
-  --t-fundo: #1c101c;
+  --t-fundo: var(--noite-pagina);
   --t-superficie: #2a1a2a;
-  --t-tinta: #e8dccb;
+  --t-tinta: var(--noite-tinta);
   --t-suave: #b3a3ae;
   --t-linha: #3d2b3d;
   --t-linha-forte: #8a7787;
@@ -105,14 +122,14 @@
 .superficie-escura {
   color-scheme: dark;
   --fundo: var(--ameixa);
-  --superficie: #3d1a3c;
+  --superficie: var(--ameixa-elevada);
   --tinta: var(--creme);
-  --suave: #beadac;
+  --suave: var(--creme-suave);
   --linha: rgb(246 235 221 / 14%);
-  --linha-forte: #937a87;
+  --linha-forte: var(--ameixa-borda);
   --acento: var(--ouro);
   --sobre-acento: var(--ameixa);
-  --acento-suave: #45264a;
+  --acento-suave: var(--ameixa-hover);
   --foco: var(--ouro);
   --perigo: #f2a7a0;
   --sombra: 0 1px 2px rgb(0 0 0 / 30%), 0 12px 32px rgb(0 0 0 / 35%);

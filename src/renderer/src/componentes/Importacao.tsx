@@ -16,6 +16,9 @@ type Estado =
   | { fase: 'erro'; mensagem: string; aviso?: string }
 
 const FALHA_INESPERADA = 'Algo deu errado ao adicionar o livro. Tente de novo; se continuar, reinicie o app.'
+// Arquivo arrastado de outro app (um anexo, um download em andamento) pode não ter caminho no disco.
+const SEM_CAMINHO =
+  'Não deu para saber onde esse arquivo está no computador. Salve-o numa pasta e arraste de lá, ou use Importar livro.'
 
 /** PDFs chegam sem capa: a primeira página vira a capa. Se falhar, fica a capa tipográfica. */
 async function comCapa(livro: Livro): Promise<Livro> {
@@ -90,6 +93,10 @@ export function useImportacao(aoMudarBiblioteca: () => void) {
   const importar = useCallback(
     (caminho: string, avisoNoFim?: string) => {
       if (importando.current) return Promise.resolve()
+      if (!caminho) {
+        setEstado({ fase: 'erro', mensagem: SEM_CAMINHO })
+        return Promise.resolve()
+      }
       aviso.current = avisoNoFim
       setEstado({ fase: 'andamento', andamento: { etapa: 'lendo' }, adaptou: false })
       return executar(() => api.biblioteca.importar(caminho))

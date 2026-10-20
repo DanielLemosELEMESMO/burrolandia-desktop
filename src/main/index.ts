@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, shell } from 'electron'
+import { MARCA, TEMAS } from '@nucleo/cores'
 import type { Preferencias } from '@nucleo/tipos'
 import { Banco } from './banco'
 import { Biblioteca } from './biblioteca'
@@ -23,10 +24,7 @@ interface EstadoDaJanela {
   maximizada: boolean
 }
 
-// O fundo da janela antes da primeira pintura (os mesmos valores de estilos/tokens.css): ameixa nas
-// telas da biblioteca, a cor da página do tema no leitor.
-const AMEIXA = '#2f0e2f'
-const FUNDO_POR_TEMA = { papel: '#f6ebdd', sepia: '#ebdcc2', noite: '#1c101c' }
+// O fundo da janela antes da primeira pintura: ameixa nas telas da biblioteca, a página do tema no leitor.
 
 const temaEfetivo = (preferencias: Preferencias) =>
   preferencias.tema === 'automatico' ? (nativeTheme.shouldUseDarkColors ? 'noite' : 'papel') : preferencias.tema
@@ -34,7 +32,7 @@ const temaEfetivo = (preferencias: Preferencias) =>
 function aparencia(banco: Banco, biblioteca: Biblioteca) {
   const tema = temaEfetivo(lerPreferencias(banco))
   const noLeitor = !!lerSessao(banco, biblioteca).livroAberto
-  return { tema, tela: noLeitor ? 'leitor' : 'marca', fundo: noLeitor ? FUNDO_POR_TEMA[tema] : AMEIXA }
+  return { tema, tela: noLeitor ? 'leitor' : 'marca', fundo: noLeitor ? TEMAS[tema].pagina : MARCA.ameixa }
 }
 
 /** Mapas de caracteres e fontes padrão do pdf.js, copiados junto com a interface (pdfjs/). */

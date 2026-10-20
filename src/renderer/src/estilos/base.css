@@ -22,7 +22,7 @@ body {
    Nas telas da marca, a rolagem também fica escura. */
 html[data-tela='marca'] {
   color-scheme: dark;
-  scrollbar-color: #937a87 transparent;
+  scrollbar-color: var(--ameixa-borda) transparent;
 }
 
 html[data-tela='marca'] body {
@@ -32,6 +32,12 @@ html[data-tela='marca'] body {
 
 #raiz {
   height: 100%;
+}
+
+/* As telas recebem o foco quando você chega nelas (para o teclado e o leitor de tela não ficarem
+   perdidos); o contêiner não precisa de anel, só os controles dentro dele. */
+main:focus {
+  outline: none;
 }
 
 h1,
@@ -163,7 +169,7 @@ button {
   border-radius: 999px;
   border: 1px solid var(--linha);
   color: var(--suave);
-  font: 600 11px/1.5 var(--ui);
+  font: 600 12px/1.4 var(--ui);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;

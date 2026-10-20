@@ -65,7 +65,7 @@ export function TelaInicio({
       <header className="tela-topo">
         <Assinatura />
       </header>
-      <main className="tela-conteudo" aria-label="Início">
+      <main className="tela-conteudo" aria-label="Início" tabIndex={-1}>
         {livros.length === 0 ? (
           <EstadoVazio titulo={ola} aoImportar={aoImportar} />
         ) : (

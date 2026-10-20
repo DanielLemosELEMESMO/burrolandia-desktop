@@ -68,13 +68,16 @@ function Progresso({ livro }: { livro: Livro }) {
 
 export function TelaBiblioteca({
   livros,
-  pedidoDeBusca,
+  focarBusca,
+  aoFocarBusca,
   aoAbrir,
   aoMudarBiblioteca,
   aoImportar,
 }: {
   livros: Livro[]
-  pedidoDeBusca: number
+  /** Buscar, no dock: põe o cursor no campo de busca e avisa que atendeu (para não repetir na próxima visita). */
+  focarBusca: boolean
+  aoFocarBusca: () => void
   aoAbrir: (id: string) => void
   aoMudarBiblioteca: () => void
   aoImportar: () => void
@@ -88,8 +91,10 @@ export function TelaBiblioteca({
   const visiveis = organizarLivros(livros, { busca, ordem, formato })
 
   useEffect(() => {
-    if (pedidoDeBusca) campoDeBusca.current?.focus()
-  }, [pedidoDeBusca])
+    if (!focarBusca) return
+    campoDeBusca.current?.focus()
+    aoFocarBusca()
+  }, [focarBusca, aoFocarBusca])
 
   // "/" ou Ctrl+F levam à busca, como nos navegadores.
   useEffect(() => {
@@ -133,7 +138,7 @@ export function TelaBiblioteca({
       <header className="tela-topo">
         <Assinatura />
       </header>
-      <main className="tela-conteudo" aria-label="Biblioteca">
+      <main className="tela-conteudo" aria-label="Biblioteca" tabIndex={-1}>
         {livros.length === 0 ? (
           <EstadoVazio titulo="Sua biblioteca" aoImportar={aoImportar} />
         ) : (

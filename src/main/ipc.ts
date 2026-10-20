@@ -31,8 +31,8 @@ export function registrarIpc(banco: Banco, biblioteca: Biblioteca, aoMudarAparen
   ipcMain.handle('biblioteca:adicionar', async evento => {
     const janela = BrowserWindow.fromWebContents(evento.sender)
     const opcoes: Electron.OpenDialogOptions = {
-      title: 'Adicionar livro',
-      buttonLabel: 'Adicionar',
+      title: 'Importar livro',
+      buttonLabel: 'Importar',
       properties: ['openFile'],
       filters: [{ name: 'Livros (EPUB e PDF)', extensions: ['epub', 'pdf'] }],
     }

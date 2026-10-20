@@ -30,6 +30,7 @@
     "src/preload/api.ts",
     "src/nucleo/tipos.ts",
     "src/nucleo/tempo.ts",
-    "src/nucleo/organizar.ts"
+    "src/nucleo/organizar.ts",
+    "src/nucleo/cores.ts"
   ]
 }

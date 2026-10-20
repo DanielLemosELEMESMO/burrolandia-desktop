@@ -1,11 +1,11 @@
 // A marca em SVG (docs/marca): o burro de coroa, a variação de óculos escuros e a assinatura
 // "Burrolândia", com a coroa no lugar do acento do â. O burro é creme: vai sobre fundo ameixa.
 
-const CREME = '#F6EBDD'
-const FOCINHO = '#E4D0B8'
-const AMEIXA = '#2F0E2F'
-const OURO = '#D4AF7C'
-const GRAFITE = '#1F1F24'
+import { MARCA } from '@nucleo/cores'
+
+const { creme: CREME, ameixa: AMEIXA, ouro: OURO, grafite: GRAFITE } = MARCA
+/** O focinho: o creme um tom abaixo, só no desenho. */
+const FOCINHO = '#e4d0b8'
 
 /** A coroa sozinha, no ouro da marca (24×18). */
 export function Coroa({ className = 'coroa' }: { className?: string }) {

@@ -32,9 +32,11 @@ function usarArrastar(aoSoltar: (arquivos: FileList) => void) {
       if (!profundidade) setArrastando(false)
     }
     const soltar = (e: DragEvent) => {
-      e.preventDefault()
       profundidade = 0
       setArrastando(false)
+      // Texto arrastado (para a busca, por exemplo) segue o caminho normal; só arquivos viram livro.
+      if (!temArquivo(e)) return
+      e.preventDefault()
       if (e.dataTransfer?.files.length) aoSoltar(e.dataTransfer.files)
     }
     window.addEventListener('dragenter', entrar)
@@ -56,8 +58,8 @@ export function App() {
   const [livros, setLivros] = useState<Livro[]>([])
   const [tela, setTela] = useState<Tela>({ tipo: 'carregando' })
   const [ajustesAbertos, setAjustesAbertos] = useState(false)
-  // Cada pedido de busca (pelo dock) põe o cursor no campo de busca da biblioteca.
-  const [pedidoDeBusca, setPedidoDeBusca] = useState(0)
+  // Buscar, no dock, pede o cursor no campo de busca da biblioteca; a biblioteca avisa quando atendeu.
+  const [focarBusca, setFocarBusca] = useState(false)
   const escuroNoSistema = usarMidia('(prefers-color-scheme: dark)')
   const tema = temaEfetivo(preferencias, escuroNoSistema)
 
@@ -68,6 +70,14 @@ export function App() {
   useLayoutEffect(() => {
     if (tela.tipo !== 'carregando') document.documentElement.dataset.tela = tela.tipo === 'leitor' ? 'leitor' : 'marca'
   }, [tela.tipo])
+
+  // Ao trocar de tela, quem estava num botão que sumiu (o voltar do leitor, por exemplo) não fica
+  // perdido no <body>: o foco vai para a tela nova, e o leitor de tela anuncia onde você chegou.
+  useEffect(() => {
+    if (tela.tipo === 'carregando') return
+    const ativo = document.activeElement
+    if (!ativo || ativo === document.body) document.querySelector<HTMLElement>('main')?.focus({ preventScroll: true })
+  }, [tela])
 
   const recarregar = useCallback(async () => setLivros(await api.biblioteca.listar()), [])
   const importacao = useImportacao(recarregar)
@@ -108,7 +118,7 @@ export function App() {
     aoImportar: () => void importacao.adicionar(),
     aoBuscar: () => {
       void irPara('biblioteca')
-      setPedidoDeBusca(n => n + 1)
+      setFocarBusca(true)
     },
   }
 
@@ -141,7 +151,8 @@ export function App() {
       {tela.tipo === 'biblioteca' && (
         <TelaBiblioteca
           livros={livros}
-          pedidoDeBusca={pedidoDeBusca}
+          focarBusca={focarBusca}
+          aoFocarBusca={() => setFocarBusca(false)}
           aoAbrir={id => void abrir(id, 'biblioteca')}
           aoMudarBiblioteca={() => void recarregar()}
           aoImportar={navegacao.aoImportar}

@@ -52,9 +52,13 @@ describe('atributosDoLayout', () => {
       'max-inline-size': '820px',
       'max-column-count': '1',
       gap: '6%',
-      margin: '72px',
+      margin: '24px',
       animated: true,
     })
+  })
+
+  it('nas páginas, a margem cabe as faixas de cima e de baixo, que assim nunca cobrem o texto', () => {
+    expect(atributosDoLayout(PREFERENCIAS_PADRAO, false).margin).toBe('72px')
   })
 
   it('desliga a animação de página para quem prefere movimento reduzido', () => {

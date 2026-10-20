@@ -93,6 +93,17 @@ async function voltarParaOndeParou(visao: VisaoFoliate, posicao: Locator | null)
 
 const chaveDoModo = (id: string) => `burrolandia:modo:${id}`
 
+/**
+ * O texto do livro mora em iframes, e o arrasto de um arquivo lá dentro não chega à janela.
+ * Repassa para a janela, onde o App cuida de adicionar o livro (de qualquer tela).
+ */
+function repassarArrasto(e: Event) {
+  const arrasto = e as DragEvent
+  if (!Array.from(arrasto.dataTransfer?.types ?? []).includes('Files')) return
+  arrasto.preventDefault()
+  window.dispatchEvent(new DragEvent(arrasto.type, { dataTransfer: arrasto.dataTransfer, cancelable: true }))
+}
+
 function modoInicial(livro: Livro): Modo {
   if (!livro.arquivoLeitura) return 'original'
   try {
@@ -221,7 +232,9 @@ export function TelaLeitor({
 
   const teclas = useCallback(
     (e: KeyboardEvent) => {
-      if (painelAtual.current) return
+      // Com um diálogo aberto (painéis do leitor ou a importação, que pode abrir por cima do livro),
+      // as teclas são do diálogo: não viram a página nem mudam a letra por trás dele.
+      if (painelAtual.current || document.querySelector('dialog[open]')) return
       if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=')) {
         e.preventDefault()
         return mudarTamanho(1)
@@ -334,6 +347,7 @@ export function TelaLeitor({
       doc.addEventListener('mousemove', mostrarBarras)
       doc.addEventListener('wheel', aoRolar, { passive: true })
       doc.addEventListener('click', aoClicarNoLivro)
+      for (const tipo of ['dragenter', 'dragover', 'dragleave', 'drop']) doc.addEventListener(tipo, repassarArrasto)
     }
     elemento.addEventListener('relocate', aoRelocar)
     elemento.addEventListener('load', aoCarregarSecao)
@@ -475,7 +489,9 @@ export function TelaLeitor({
   return (
     <main
       className="leitor"
+      tabIndex={-1}
       aria-label={`Lendo ${livro.titulo}`}
+      data-fluxo={preferencias.fluxo}
       data-cfi={onde?.cfi}
       data-pagina={pagina}
       data-modo={modo}

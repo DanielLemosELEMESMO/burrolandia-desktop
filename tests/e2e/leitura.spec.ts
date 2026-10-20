@@ -99,13 +99,16 @@ test('remove um livro depois de confirmar', async () => {
   await app.close()
 })
 
-test('o tema escolhido vale para o app inteiro e fica guardado', async () => {
+test('o tema de leitura vale para os painéis e os diálogos, e fica guardado', async () => {
   const dados = novaPastaDeDados()
   const { app, janela } = await abrirApp(dados)
 
   await janela.getByRole('button', { name: 'Ajustes de leitura' }).click()
   await janela.getByRole('radio', { name: 'Noite' }).check()
   await expect(janela.locator('html')).toHaveAttribute('data-tema', 'noite')
+  // O painel troca para a superfície da Noite; a biblioteca, atrás, continua na ameixa da marca.
+  await expect(janela.getByRole('dialog', { name: 'Ajustes de leitura' })).toHaveCSS('background-color', 'rgb(42, 26, 42)')
+  await expect(janela.getByRole('main', { name: 'Início' }).locator('..')).toHaveCSS('background-color', 'rgb(47, 14, 47)')
   await app.close()
 
   const segunda = await abrirApp(dados)

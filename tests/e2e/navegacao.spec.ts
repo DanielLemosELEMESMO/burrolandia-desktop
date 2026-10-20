@@ -2,7 +2,7 @@ import { copyFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { gravarLivrosDeTeste } from '../fixtures/livros'
-import { abrirApp, escolherArquivo, novaPastaDeDados } from './app'
+import { abrirApp, escolherArquivo, irPara, novaPastaDeDados } from './app'
 
 test('a biblioteca busca, filtra pelo formato e alterna entre grade e lista', async () => {
   const dados = novaPastaDeDados()
@@ -56,4 +56,29 @@ test('o dock recolhe, volta e lembra como você deixou', async () => {
   await segunda.janela.getByRole('button', { name: 'Mostrar a navegação' }).click()
   await expect(segunda.janela.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible()
   await segunda.app.close()
+})
+
+test('na lista, "Remover" com o mouse remove o livro escolhido, não o de baixo', async () => {
+  const dados = novaPastaDeDados()
+  const livros = gravarLivrosDeTeste(join(dados, 'origem'))
+  const { app, janela } = await abrirApp(dados)
+  for (const arquivo of [livros.memorias, livros.domCasmurro]) {
+    await escolherArquivo(app, arquivo)
+    await janela.getByRole('button', { name: 'Importar livro' }).first().click()
+    await janela.getByRole('button', { name: 'Agora não' }).click()
+  }
+  await irPara(janela, 'Biblioteca')
+  await janela.getByRole('button', { name: 'Ver em lista' }).click()
+  await janela.getByRole('combobox').selectOption('titulo')
+  const estante = janela.getByRole('list', { name: 'Sua biblioteca' })
+  await expect(estante.getByRole('listitem').first()).toContainText('Dom Casmurro')
+
+  // O clique do Playwright é de mouse, e ele recusa clicar se outro elemento estiver por cima.
+  await janela.getByRole('button', { name: 'Mais ações para Dom Casmurro' }).click()
+  await janela.getByRole('menuitem', { name: 'Remover da biblioteca' }).click()
+  await janela.getByRole('alertdialog', { name: 'Remover este livro?' }).getByRole('button', { name: 'Remover' }).click()
+  await expect(estante.getByRole('listitem')).toHaveCount(1)
+  await expect(estante).toContainText('Memórias Póstumas de Brás Cubas')
+  await expect(janela.getByRole('main', { name: 'Biblioteca' })).toBeVisible()
+  await app.close()
 })

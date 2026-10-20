@@ -13,6 +13,12 @@
   inset: 0;
 }
 
+/* Na rolagem, o texto corre entre as faixas: elas nunca o cobrem (nas páginas, a margem cuida disso). */
+.leitor[data-fluxo='rolagem'] .leitor-livro {
+  top: 60px;
+  bottom: 72px;
+}
+
 .leitor-livro foliate-view {
   display: block;
   width: 100%;
@@ -245,9 +251,10 @@
   white-space: nowrap;
 }
 
+/* A página original corre entre as faixas de cima e de baixo, sem passar por baixo delas. */
 .leitor-original {
   position: absolute;
-  inset: 0;
+  inset: 60px 0 72px;
   z-index: 1;
 }
 
@@ -259,7 +266,7 @@
   flex-direction: column;
   align-items: center;
   gap: 20px;
-  padding: 84px 32px 96px;
+  padding: 12px 32px 24px;
   outline: none;
 }
 
@@ -279,7 +286,7 @@
 
 /* Na Noite, a página branca vira escura e o texto claro; imagens ficam um pouco estranhas, mas os olhos agradecem. */
 [data-tema='noite'] .pagina-vaga {
-  background: #1c101c;
+  background: var(--noite-pagina);
 }
 
 [data-tema='noite'] .pagina-vaga canvas {

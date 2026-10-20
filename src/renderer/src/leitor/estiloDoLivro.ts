@@ -1,6 +1,7 @@
 // O CSS que entra dentro do livro (nos iframes do foliate) e os atributos do paginador.
 // Sem DOM: dá para testar no Node.
 
+import { MARCA, TEMAS } from '@nucleo/cores'
 import type { Preferencias, TemaEfetivo } from '@nucleo/tipos'
 
 export interface FontesLocais {
@@ -8,12 +9,13 @@ export interface FontesLocais {
   atkinson: { normal: string; italico: string }
 }
 
-// As mesmas cores de estilos/tokens.css, para a página do livro: Creme Leitura com Grafite Focado,
-// links em ameixa (ouro na Noite) e a seleção no Lilás Pensativo, clareado para o texto continuar legível.
+// A página do livro em cada tema: Creme Leitura com Grafite Focado; links em ameixa (em lilás na
+// Noite: o ouro fica para os detalhes, não para o texto); a seleção no Lilás Pensativo, misturado à
+// página para o texto continuar legível (contraste ≥ 6,5:1).
 const CORES: Record<TemaEfetivo, { pagina: string; tinta: string; acento: string; selecao: string; esquema: string }> = {
-  papel: { pagina: '#f6ebdd', tinta: '#1f1f24', acento: '#2f0e2f', selecao: '#dbccdb', esquema: 'light' },
-  sepia: { pagina: '#ebdcc2', tinta: '#3a2a1c', acento: '#2f0e2f', selecao: '#d7c7cb', esquema: 'light' },
-  noite: { pagina: '#1c101c', tinta: '#e8dccb', acento: '#d4af7c', selecao: '#53455e', esquema: 'dark' },
+  papel: { ...TEMAS.papel, acento: MARCA.ameixa, selecao: '#dbccdb', esquema: 'light' },
+  sepia: { ...TEMAS.sepia, acento: MARCA.ameixa, selecao: '#d7c7cb', esquema: 'light' },
+  noite: { ...TEMAS.noite, acento: MARCA.lilas, selecao: '#53455e', esquema: 'dark' },
 }
 
 const ALTURA_DA_LINHA = { compacto: 1.35, confortavel: 1.55, amplo: 1.8 }
@@ -80,8 +82,9 @@ export function atributosDoLayout(p: Preferencias, movimentoReduzido: boolean) {
     'max-inline-size': `${LARGURA[p.largura]}px`,
     'max-column-count': p.colunas === 'duas' ? '2' : '1',
     gap: '6%',
-    // A faixa de cima e a de baixo (com o dock) cabem na margem: nunca cobrem o texto.
-    margin: '72px',
+    // Nas páginas, as faixas de cima e de baixo (com o dock) cabem na margem e nunca cobrem o texto.
+    // Na rolagem, a área do livro já começa abaixo da faixa de cima e acaba acima da de baixo (leitor.css).
+    margin: p.fluxo === 'rolagem' ? '24px' : '72px',
     animated: !movimentoReduzido,
   }
 }

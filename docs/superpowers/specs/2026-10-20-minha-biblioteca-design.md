@@ -100,7 +100,7 @@ Notas para a parte 2 (sincronização):
 ## 5. Fluxos
 
 **Adicionar livro (início, meio e fim)**
-1. Início: "Importar livro" (o botão de ouro no centro do dock, ou o do estado vazio) abre o diálogo do sistema; arrastar o arquivo para qualquer tela também vale, inclusive no leitor.
+1. Início: "Importar livro" (o botão de ouro no centro do dock, ou o do estado vazio) abre o diálogo do sistema; arrastar o arquivo para qualquer tela também vale, inclusive em cima do texto do livro (o leitor repassa o arrasto que acontece dentro dos iframes). Arquivo sem caminho no disco (vindo de outro app) recebe a explicação de salvar numa pasta antes.
 2. Meio: painel "Preparando seu livro", com o que está acontecendo ("Lendo o arquivo", e para PDF "Adaptando o texto — página 34 de 210").
 3. Fim: o burro de coroa, "Seu livro está na biblioteca", capa e título, a lista do que aconteceu (no PDF, se o texto foi adaptado ou se ele é digitalizado), e os botões "Começar a ler" e "Agora não".
 - Arquivo repetido (mesmo SHA-256): "Esse livro já está na sua biblioteca", com "Abrir".
@@ -115,7 +115,7 @@ Notas para a parte 2 (sincronização):
 ## 6. Leitor
 
 - Navegação: ←/→, PageUp/PageDown, espaço (Shift+espaço volta), Home/End do capítulo, roda do mouse, clique nas margens laterais.
-- Faixa de cima: voltar (com o nome de onde você veio: "Início" ou "Biblioteca"), título, capítulo, alternância do PDF, Sumário e Aa. Faixa de baixo: capítulo e tempo restante, o dock compacto no meio, a porcentagem, e o fio de progresso com o ponto de ouro. As duas cabem nas margens do livro (72 px): nunca cobrem o texto. Somem após 2,5 s sem mexer o mouse; escondidas, não pegam clique; reaparecem com o mouse, com Tab ou com um painel aberto.
+- Faixa de cima: voltar (com o nome de onde você veio: "Início" ou "Biblioteca"), título, capítulo, alternância do PDF, Sumário e Aa. Faixa de baixo: capítulo e tempo restante, o dock compacto no meio, a porcentagem, e o fio de progresso com o ponto de ouro. Nas páginas, as duas cabem nas margens do livro (72 px); na rolagem e na página original, o texto corre entre elas. Nunca cobrem o texto. Somem após 2,5 s sem mexer o mouse; escondidas, não pegam clique; reaparecem com o mouse, com Tab ou com um painel aberto.
 - Painéis (Sumário, Aa) são diálogos: foco preso, Esc fecha, foco volta ao botão de origem.
 - O tema de leitura (Automático, Creme, Sépia, Noite) vale para o leitor, os painéis e os diálogos; as telas da biblioteca ficam na ameixa da marca. As preferências de texto valem para todos os livros.
 - Padrões: tema Automático; Literata; 19px; espaçamento 1,55; coluna de 660px; alinhado à esquerda (texto justificado é opcional, porque prejudica quem tem dislexia); duas páginas quando couber.
@@ -153,7 +153,7 @@ Limites conhecidos: imagens e tabelas do PDF não entram no texto adaptado (est�
 
 A marca vem do kit do Daniel (docs/marca: manual, tokens e referências). Decisões de implementação:
 
-- **Cores:** as cinco da marca em `estilos/tokens.css` (Ameixa Real #2F0E2F, Creme Leitura #F6EBDD, Ouro Irreverente #D4AF7C, Lilás Pensativo #B9A7D9, Grafite Focado #1F1F24) e os tons derivados, todos com contraste conferido por cálculo (texto ≥ 5,1:1; bordas e foco ≥ 3,1:1). Ouro e lilás nunca são texto sobre fundo claro.
+- **Cores:** as cinco da marca em `estilos/tokens.css` (Ameixa Real #2F0E2F, Creme Leitura #F6EBDD, Ouro Irreverente #D4AF7C, Lilás Pensativo #B9A7D9, Grafite Focado #1F1F24) e os tons derivados, todos com contraste conferido por cálculo (texto ≥ 5,1:1; bordas e foco ≥ 3,1:1). O código fora do CSS (fundo da janela, CSS de dentro do livro, SVG) lê os mesmos HEX de `src/nucleo/cores.ts`, e um teste confere que as duas listas batem. Ouro é detalhe (ícones, fios, o botão Importar, o ponto do item atual), nunca texto pequeno; links na Noite são lilás.
 - **Duas superfícies:** a da marca (ameixa, creme no texto, ouro nos destaques) no Início, na Biblioteca e no dock; a do tema de leitura no leitor, nos painéis, nos diálogos e no cartão "Continuar lendo". O tema claro se chama Creme na tela (no código e no banco continua `papel`, para não migrar preferências).
 - **Letras:** Fraunces (com eixo de tamanho óptico) nos títulos e na assinatura; Inter na interface; nos livros, a escolha do leitor (Literata, Atkinson ou a do livro), nunca a fonte da marca.
 - **Navegação:** sem barra lateral. Dock flutuante no centro da base com Início, Biblioteca, Importar (círculo de ouro), Buscar e Ajustes; recolhe num botão e lembra a escolha. No leitor, mora na faixa de baixo, sem Ajustes (o Aa está no topo) e some junto com as faixas.

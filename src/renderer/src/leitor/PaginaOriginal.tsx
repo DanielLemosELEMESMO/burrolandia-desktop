@@ -15,8 +15,8 @@ const ZOOM_MAXIMO = 2.5
 const LARGURA_MAXIMA = 920
 const MARGEM = 32
 const DESENHADAS_NO_MAXIMO = 12
-/** Altura da barra de cima: a página "atual" é a que está logo abaixo dela. */
-const TOPO_VISIVEL = 72
+/** Folga no alto da área da página original (que já começa abaixo da faixa de cima): a página "atual" é a que está logo abaixo dela. */
+const TOPO_VISIVEL = 12
 
 export function PaginaOriginal({
   url,
@@ -149,7 +149,7 @@ export function PaginaOriginal({
     rolagemPorComando.current = true
     if (numero !== atual.current) avisar(numero)
     const reduzido = matchMedia('(prefers-reduced-motion: reduce)').matches
-    // Desconta a barra de cima, para o topo da página aparecer logo abaixo dela.
+    // Deixa a folga no alto, para o topo da página aparecer logo abaixo da faixa de cima.
     rolagem.current.scrollTo({ top: vaga.offsetTop - TOPO_VISIVEL, behavior: suave && !reduzido ? 'smooth' : 'auto' })
   }
 
@@ -158,7 +158,7 @@ export function PaginaOriginal({
     if (pdf && largura) irPara(atual.current, false)
   }, [pdf, largura, larguraDaPagina])
 
-  // Na rolagem feita pela pessoa, a página atual é a que está na linha logo abaixo da barra de cima
+  // Na rolagem feita pela pessoa, a página atual é a que está na linha logo abaixo da folga do alto
   // (a mesma referência usada por irPara); no fim do documento, é a última.
   useEffect(() => {
     const elemento = rolagem.current
