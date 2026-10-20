@@ -1,0 +1,35 @@
+// Ícones de traço, desenhados à mão (24×24). Sempre acompanhados de texto ou de aria-label.
+
+const CAMINHOS = {
+  mais: 'M12 5v14M5 12h14',
+  voltar: 'M15 18l-6-6 6-6',
+  avancar: 'M9 18l6-6-6-6',
+  sumario: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+  fechar: 'M6 6l12 12M18 6L6 18',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
+  lixeira: 'M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3',
+  maisAcoes: 'M5 12h.01M12 12h.01M19 12h.01',
+  livro: 'M12 6.5C10 5 7.5 4.5 4 4.5v13c3.5 0 6 .5 8 2 2-1.5 4.5-2 8-2v-13c-3.5 0-6 .5-8 2zM12 6.5v13',
+  pagina: 'M7 3h7l5 5v13H7zM14 3v5h5',
+  aviso: 'M12 8v5M12 16.5h.01M10.3 3.9L2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+} as const
+
+export type NomeDoIcone = keyof typeof CAMINHOS
+
+export function Icone({ nome, className = 'icone' }: { nome: NomeDoIcone; className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={nome === 'maisAcoes' ? 3 : 1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d={CAMINHOS[nome]} />
+    </svg>
+  )
+}

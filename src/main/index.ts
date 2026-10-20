@@ -1,0 +1,126 @@
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { app, BrowserWindow, Menu, nativeTheme, screen, shell } from 'electron'
+import type { Preferencias } from '@nucleo/tipos'
+import { Banco } from './banco'
+import { Biblioteca } from './biblioteca'
+import { lerPreferencias, registrarIpc } from './ipc'
+import { ORIGEM, caminhoDaInterface, registrarEsquema, tratarProtocolo, urlDaInterface } from './protocolo'
+
+// Nome sem acento para a pasta de dados (%APPDATA%\Burrolandia); as janelas mostram "Burrolândia".
+app.setName('Burrolandia')
+// Nos testes, cada execução usa uma pasta de dados própria.
+if (process.env.BURROLANDIA_DADOS) app.setPath('userData', process.env.BURROLANDIA_DADOS)
+
+registrarEsquema()
+
+interface EstadoDaJanela {
+  x?: number
+  y?: number
+  width: number
+  height: number
+  maximizada: boolean
+}
+
+const FUNDO_POR_TEMA = { papel: '#fbfaf6', sepia: '#f3ead8', noite: '#141816' }
+
+const temaEfetivo = (preferencias: Preferencias) =>
+  preferencias.tema === 'automatico' ? (nativeTheme.shouldUseDarkColors ? 'noite' : 'papel') : preferencias.tema
+
+const corDeFundo = (preferencias: Preferencias) => FUNDO_POR_TEMA[temaEfetivo(preferencias)]
+
+/** Só reaproveita a posição antiga se ela ainda cabe numa tela conectada. */
+function estadoValido(estado: EstadoDaJanela | undefined): EstadoDaJanela {
+  const padrao = { width: 1280, height: 860, maximizada: false }
+  if (!estado || estado.width < 600 || estado.height < 400) return padrao
+  if (estado.x === undefined || estado.y === undefined) return estado
+  const { x, y, width } = estado
+  const visivel = screen.getAllDisplays().some(({ workArea: a }) =>
+    x < a.x + a.width - 100 && x + width > a.x + 100 && y >= a.y - 10 && y < a.y + a.height - 100,
+  )
+  return visivel ? estado : { ...estado, x: undefined, y: undefined }
+}
+
+function criarJanela(banco: Banco) {
+  const estado = estadoValido(banco.lerPreferencia<EstadoDaJanela>('janela'))
+  const preferencias = lerPreferencias(banco)
+  const janela = new BrowserWindow({
+    x: estado.x,
+    y: estado.y,
+    width: estado.width,
+    height: estado.height,
+    minWidth: 720,
+    minHeight: 520,
+    show: false,
+    title: 'Burrolândia',
+    backgroundColor: corDeFundo(preferencias),
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: false,
+    },
+  })
+  if (estado.maximizada) janela.maximize()
+  janela.once('ready-to-show', () => janela.show())
+
+  janela.on('close', () => {
+    const { x, y, width, height } = janela.getNormalBounds()
+    banco.salvarPreferencia('janela', { x, y, width, height, maximizada: janela.isMaximized() } satisfies EstadoDaJanela)
+  })
+
+  // Links externos abrem no navegador; a janela nunca sai do app.
+  janela.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  janela.webContents.on('will-navigate', (evento, url) => {
+    const daInterface = url.startsWith(ORIGEM) || (process.env.ELECTRON_RENDERER_URL && url.startsWith(process.env.ELECTRON_RENDERER_URL))
+    if (!daInterface) evento.preventDefault()
+  })
+
+  // O tema vai na URL para a primeira pintura já sair na cor certa.
+  void janela.loadURL(`${urlDaInterface()}?tema=${temaEfetivo(preferencias)}`)
+  return janela
+}
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  let banco: Banco | undefined
+
+  app.on('second-instance', () => {
+    const janela = BrowserWindow.getAllWindows()[0]
+    if (janela?.isMinimized()) janela.restore()
+    janela?.focus()
+  })
+
+  app.whenReady().then(() => {
+    if (process.platform === 'win32') app.setAppUserModelId('br.com.burrolandia.desktop')
+    if (app.isPackaged && process.platform !== 'darwin') Menu.setApplicationMenu(null)
+
+    const pastaDados = app.getPath('userData')
+    mkdirSync(pastaDados, { recursive: true })
+    banco = new Banco(join(pastaDados, 'burrolandia.db'))
+    const biblioteca = new Biblioteca(pastaDados, banco)
+    const bancoAberto = banco
+
+    tratarProtocolo(biblioteca, caminhoDaInterface(__dirname))
+    registrarIpc(banco, biblioteca, preferencias => {
+      for (const janela of BrowserWindow.getAllWindows()) janela.setBackgroundColor(corDeFundo(preferencias))
+    })
+    criarJanela(banco)
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) criarJanela(bancoAberto)
+    })
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
+  })
+
+  app.on('will-quit', () => banco?.fechar())
+}

@@ -1,0 +1,141 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--fundo);
+  color: var(--tinta);
+  font: 15px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  transition: background var(--transicao), color var(--transicao);
+}
+
+#raiz {
+  height: 100%;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--serif);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* Foco visível sempre, e só para quem usa teclado. */
+:focus-visible {
+  outline: 3px solid var(--foco);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.so-leitor-de-tela {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Botões */
+
+.botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--alvo);
+  padding: 0 18px;
+  border: 1px solid var(--linha-forte);
+  border-radius: 999px;
+  background: var(--superficie);
+  color: var(--tinta);
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  transition: background var(--transicao), border-color var(--transicao), transform var(--transicao);
+}
+
+.botao:hover {
+  background: var(--acento-suave);
+}
+
+.botao:active {
+  transform: translateY(1px);
+}
+
+.botao.principal {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.botao.principal:hover {
+  filter: brightness(1.08);
+}
+
+.botao.perigo {
+  background: var(--perigo);
+  border-color: var(--perigo);
+  color: var(--superficie);
+}
+
+.botao-icone {
+  display: inline-grid;
+  place-items: center;
+  width: var(--alvo);
+  height: var(--alvo);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  transition: background var(--transicao);
+}
+
+.botao-icone:hover {
+  background: var(--acento-suave);
+}
+
+.icone {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -1,0 +1,71 @@
+/* Burrolândia — papel, tinta e um verde de biblioteca antiga.
+   Contraste conferido por cálculo: texto ≥ 4,5 (o suave fica entre 5,8 e 8), foco ≥ 3, botões ≥ 7. */
+
+:root {
+  --serif: 'Literata Variable', Georgia, 'Times New Roman', serif;
+  --sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --raio: 14px;
+  --raio-pequeno: 10px;
+  --alvo: 44px;
+  --sombra: 0 1px 2px rgb(0 0 0 / 6%), 0 8px 24px rgb(0 0 0 / 8%);
+  --transicao: 0.18s ease;
+}
+
+:root,
+[data-tema='papel'] {
+  color-scheme: light;
+  --fundo: #f6f4ee;
+  --superficie: #fdfcf9;
+  --pagina: #fbfaf6;
+  --tinta: #1f2421;
+  --suave: #5a615c;
+  --linha: #d9d4c7;
+  --linha-forte: #8f948f;
+  --acento: #2d5a4e;
+  --sobre-acento: #ffffff;
+  --acento-suave: #e6eee9;
+  --marca: #14362f;
+  --ouro: #b8955a;
+  --foco: #a8742c;
+  --perigo: #a3423d;
+  --veu: rgb(20 24 22 / 45%);
+}
+
+[data-tema='sepia'] {
+  color-scheme: light;
+  --fundo: #efe5cf;
+  --superficie: #f7efdc;
+  --pagina: #f4ecd8;
+  --tinta: #3b2f22;
+  --suave: #66543f;
+  --linha: #d6c6a4;
+  --linha-forte: #8c7a5f;
+  --acento: #6b4423;
+  --sobre-acento: #ffffff;
+  --acento-suave: #ead9bb;
+  --marca: #4a2f17;
+  --ouro: #a07a3c;
+  --foco: #8a5a17;
+  --perigo: #9a3b33;
+  --veu: rgb(40 28 14 / 40%);
+}
+
+[data-tema='noite'] {
+  color-scheme: dark;
+  --fundo: #111412;
+  --superficie: #1b201d;
+  --pagina: #141816;
+  --tinta: #dfe3dd;
+  --suave: #a4ada6;
+  --linha: #2f3833;
+  --linha-forte: #6f7a73;
+  --acento: #8cc5ae;
+  --sobre-acento: #0f221b;
+  --acento-suave: #213129;
+  --marca: #8cc5ae;
+  --ouro: #d9b878;
+  --foco: #e0b25e;
+  --perigo: #f0a199;
+  --veu: rgb(0 0 0 / 60%);
+  --sombra: 0 1px 2px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 40%);
+}

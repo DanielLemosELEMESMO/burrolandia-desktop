@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2023",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "allowJs": false,
+    "types": [
+      "vite/client"
+    ],
+    "paths": {
+      "@nucleo/*": [
+        "./src/nucleo/*"
+      ]
+    }
+  },
+  "include": [
+    "src/renderer/src/**/*",
+    "src/preload/api.ts",
+    "src/nucleo/tipos.ts",
+    "src/nucleo/tempo.ts"
+  ]
+}

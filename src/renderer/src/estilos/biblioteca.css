@@ -1,0 +1,362 @@
+/* Biblioteca */
+
+.tela-biblioteca {
+  min-height: 100%;
+}
+
+.topo {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 72px;
+  padding: 0 clamp(20px, 4vw, 48px);
+  background: color-mix(in srgb, var(--fundo) 92%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.marca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--marca);
+  font: 600 20px/1 var(--serif);
+  letter-spacing: -0.01em;
+}
+
+.marca .icone {
+  width: 26px;
+  height: 26px;
+}
+
+.topo-acoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.botao-aa {
+  font: 600 18px/1 var(--serif);
+}
+
+.biblioteca {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 8px clamp(20px, 4vw, 48px) 64px;
+}
+
+.saudacao {
+  font-size: clamp(32px, 4vw, 42px);
+  margin: 12px 0 28px;
+}
+
+.sobretitulo {
+  font: 600 13px/1.2 var(--sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--suave);
+  margin-bottom: 16px;
+}
+
+.contagem {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--acento-suave);
+  color: var(--tinta);
+  letter-spacing: 0;
+}
+
+/* Continuar lendo */
+
+.destaque {
+  margin-bottom: 48px;
+}
+
+.destaque-livro {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: clamp(20px, 4vw, 44px);
+  padding: clamp(20px, 3vw, 32px);
+  border-radius: 22px;
+  background: var(--superficie);
+  box-shadow: var(--sombra);
+}
+
+.destaque-capa {
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 8px;
+}
+
+.destaque-texto h3 {
+  font-size: clamp(28px, 3.4vw, 40px);
+  margin-bottom: 6px;
+}
+
+.destaque-autor {
+  color: var(--suave);
+  font-size: 17px;
+  margin-bottom: 18px;
+}
+
+.destaque-onde {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 17px;
+  margin-bottom: 14px;
+}
+
+.destaque-texto .barra-livro {
+  max-width: 380px;
+  height: 6px;
+}
+
+.destaque-quanto {
+  color: var(--suave);
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.destaque-botao {
+  margin-top: 22px;
+  min-height: 52px;
+  padding: 0 26px;
+  font-size: 16px;
+}
+
+.barra-livro {
+  display: block;
+  height: 4px;
+  border-radius: 9px;
+  background: var(--linha);
+  overflow: hidden;
+}
+
+.barra-livro i {
+  display: block;
+  height: 100%;
+  border-radius: 9px;
+  background: var(--acento);
+}
+
+/* Estante */
+
+.grade {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 32px 24px;
+}
+
+.cartao {
+  position: relative;
+}
+
+.cartao-abrir {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  border-radius: 8px;
+}
+
+.cartao-abrir .capa {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.cartao-abrir:hover .capa {
+  transform: translateY(-4px);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 10%), 0 16px 32px rgb(0 0 0 / 16%);
+}
+
+.cartao-titulo {
+  margin-top: 12px;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cartao-autor {
+  margin-top: 2px;
+  color: var(--suave);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cartao-progresso {
+  display: block;
+  margin-top: 8px;
+}
+
+.cartao-titulo,
+.cartao-autor {
+  padding-right: 40px;
+}
+
+.cartao .menu-de-acoes {
+  position: absolute;
+  right: -10px;
+  bottom: -8px;
+}
+
+.cartao .menu-de-acoes > .botao-icone {
+  color: var(--suave);
+}
+
+.cartao .menu-de-acoes > .botao-icone:hover,
+.cartao .menu-de-acoes > .botao-icone[aria-expanded='true'] {
+  color: var(--tinta);
+}
+
+/* Capas */
+
+.capa {
+  display: block;
+  flex: none;
+  min-width: 0;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 3px 8px 8px 3px;
+  background: var(--linha);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 12%), 0 8px 18px rgb(0 0 0 / 12%);
+}
+
+.capa-grande {
+  width: clamp(130px, 16vw, 190px);
+}
+
+.capa-pequena {
+  width: 56px;
+  border-radius: 2px 5px 5px 2px;
+}
+
+.capa-tipografica {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  /* Padding em px: porcentagem seria relativa ao contêiner, não à capa. */
+  padding: 18px 14px;
+  color: #fbfbf7;
+  overflow: hidden;
+  background-image: linear-gradient(90deg, rgb(0 0 0 / 18%) 0, rgb(0 0 0 / 0%) 7%);
+}
+
+.capa-titulo {
+  font: 500 18px/1.15 var(--serif);
+  letter-spacing: -0.01em;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.capa-autor {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.capa-grande.capa-tipografica {
+  padding: 26px 20px;
+}
+
+.capa-grande .capa-titulo {
+  font-size: 24px;
+}
+
+.capa-pequena.capa-tipografica {
+  padding: 6px 5px;
+}
+
+.capa-pequena .capa-titulo {
+  font-size: 12px;
+  -webkit-line-clamp: 3;
+}
+
+.capa-pequena .capa-autor {
+  display: none;
+}
+
+/* Biblioteca vazia */
+
+.vazio {
+  max-width: 520px;
+  margin: 8vh auto 0;
+  text-align: center;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+
+.vazio-icone {
+  width: 64px;
+  height: 64px;
+  color: var(--acento);
+  stroke-width: 1.4;
+}
+
+.vazio h1 {
+  font-size: 40px;
+}
+
+.vazio h2 {
+  font: 600 20px/1.3 var(--sans);
+  letter-spacing: 0;
+}
+
+.vazio p {
+  color: var(--suave);
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+/* Arrastar e soltar */
+
+.soltar {
+  position: fixed;
+  inset: 12px;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  border: 3px dashed var(--acento);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--fundo) 86%, transparent);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+  text-align: center;
+  font: 500 24px/1.3 var(--serif);
+  color: var(--acento);
+}
+
+.soltar .icone {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 760px) {
+  .destaque-livro {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+}

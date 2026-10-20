@@ -1,0 +1,492 @@
+/* Diálogos e painéis laterais (sobre o <dialog> nativo). */
+
+.dialogo {
+  border: 0;
+  padding: 0;
+  background: var(--superficie);
+  color: var(--tinta);
+  border-radius: 20px;
+  box-shadow: var(--sombra);
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+}
+
+.dialogo::backdrop {
+  background: var(--veu);
+}
+
+.dialogo[open] {
+  animation: surgir 0.2s ease;
+}
+
+.dialogo-conteudo {
+  padding: 28px;
+}
+
+.dialogo-cabeca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.dialogo-cabeca h2 {
+  font-size: 26px;
+}
+
+.dialogo-cabeca .botao-icone {
+  margin: -8px -8px -8px 0;
+}
+
+/* Painéis laterais: o livro continua visível atrás, para ver os ajustes acontecendo. */
+.dialogo-lateral-direita,
+.dialogo-lateral-esquerda {
+  height: 100vh;
+  max-height: 100vh;
+  width: min(410px, calc(100vw - 48px));
+  border-radius: 0;
+  overflow-y: auto;
+}
+
+.dialogo-lateral-direita {
+  margin: 0 0 0 auto;
+  border-radius: 20px 0 0 20px;
+}
+
+.dialogo-lateral-esquerda {
+  margin: 0 auto 0 0;
+  border-radius: 0 20px 20px 0;
+}
+
+.dialogo-lateral-direita::backdrop,
+.dialogo-lateral-esquerda::backdrop {
+  background: rgb(0 0 0 / 12%);
+}
+
+.dialogo-lateral-direita[open] {
+  animation: entrar-direita 0.22s ease;
+}
+
+.dialogo-lateral-esquerda[open] {
+  animation: entrar-esquerda 0.22s ease;
+}
+
+@keyframes surgir {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes entrar-direita {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+}
+
+@keyframes entrar-esquerda {
+  from {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+}
+
+.botoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.dica {
+  color: var(--suave);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Importação: andamento */
+
+.etapas {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.etapas li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--suave);
+}
+
+.etapas li::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--linha-forte);
+  flex: none;
+}
+
+.etapas li[data-situacao='feita']::before {
+  background: var(--acento);
+  border-color: var(--acento);
+}
+
+.etapas li[data-situacao='atual'] {
+  color: var(--tinta);
+  font-weight: 600;
+}
+
+.etapas li[data-situacao='atual']::before {
+  border-color: var(--acento);
+  box-shadow: inset 0 0 0 3px var(--superficie);
+  background: var(--acento);
+}
+
+.barra-andamento {
+  height: 6px;
+  border-radius: 9px;
+  background: var(--linha);
+  overflow: hidden;
+}
+
+.barra-andamento i {
+  display: block;
+  height: 100%;
+  background: var(--acento);
+  border-radius: 9px;
+  transition: width 0.3s;
+}
+
+.barra-andamento.indeterminada i {
+  width: 35%;
+  animation: vai-e-vem 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes vai-e-vem {
+  from {
+    transform: translateX(-20%);
+  }
+  to {
+    transform: translateX(210%);
+  }
+}
+
+/* Importação: fim */
+
+.fim .selo {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--acento);
+  color: var(--sobre-acento);
+  margin-bottom: 18px;
+}
+
+.fim .selo .icone {
+  width: 28px;
+  height: 28px;
+  stroke-width: 2.4;
+}
+
+.livro-resumo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px;
+  border-radius: var(--raio);
+  background: var(--fundo);
+}
+
+.livro-resumo strong {
+  display: block;
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.livro-resumo-autor {
+  color: var(--suave);
+  font-size: 14px;
+}
+
+.proximos {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.proximos li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.proximos li::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--acento);
+  flex: none;
+  transform: translateY(1px);
+}
+
+.proximos li.feito::before {
+  background: var(--acento);
+}
+
+.mensagem-erro {
+  font-size: 16px;
+}
+
+/* Ajustes de leitura */
+
+.ajustes {
+  display: grid;
+  gap: 22px;
+}
+
+.ajuste {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.ajuste legend,
+.ajuste .legenda {
+  display: block;
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--suave);
+}
+
+.ajuste:disabled {
+  opacity: 0.5;
+}
+
+.segmentos {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--linha-forte);
+  border-radius: 12px;
+}
+
+.segmento {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--alvo);
+  padding: 6px 4px;
+  border-radius: 9px;
+  font-size: 14px;
+  text-align: center;
+  cursor: pointer;
+  transition: background var(--transicao), color var(--transicao);
+}
+
+.segmento:hover {
+  background: var(--acento-suave);
+}
+
+.segmento input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.segmento:has(input:checked) {
+  background: var(--acento);
+  color: var(--sobre-acento);
+  font-weight: 600;
+}
+
+.segmento:has(input:focus-visible) {
+  outline: 3px solid var(--foco);
+  outline-offset: 2px;
+}
+
+.ajuste:disabled .segmento {
+  cursor: default;
+}
+
+.ajuste-tema .segmento {
+  padding: 10px 2px 8px;
+  font-size: 13px;
+}
+
+.amostra {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--linha-forte);
+  position: relative;
+  overflow: hidden;
+}
+
+.amostra::after {
+  content: 'Aa';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 600 12px/1 var(--serif);
+}
+
+.amostra-papel {
+  background: #fbfaf6;
+  color: #1f2421;
+}
+
+.amostra-sepia {
+  background: #f4ecd8;
+  color: #3b2f22;
+}
+
+.amostra-noite {
+  background: #141816;
+  color: #dfe3dd;
+}
+
+.amostra-automatico {
+  background: linear-gradient(135deg, #fbfaf6 50%, #141816 50%);
+}
+
+.amostra-automatico::after {
+  content: '';
+}
+
+.ajuste-letra .segmento:nth-child(1) span {
+  font-family: 'Literata Variable', serif;
+  font-size: 15px;
+}
+
+.ajuste-letra .segmento:nth-child(2) span {
+  font-family: 'Atkinson Hyperlegible Next Variable', sans-serif;
+  font-size: 15px;
+}
+
+.tamanho {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tamanho .botao {
+  min-width: 64px;
+  font-family: var(--serif);
+  font-size: 17px;
+}
+
+.tamanho .botao:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tamanho output {
+  min-width: 40px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sumário */
+
+.sumario ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sumario ol ol {
+  padding-left: 16px;
+}
+
+.sumario-item {
+  display: block;
+  width: 100%;
+  min-height: var(--alvo);
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--raio-pequeno);
+  background: transparent;
+  text-align: left;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.sumario-item:hover {
+  background: var(--acento-suave);
+}
+
+.sumario-item[aria-current] {
+  background: var(--acento-suave);
+  color: var(--acento);
+  font-weight: 650;
+  box-shadow: inset 3px 0 0 var(--acento);
+}
+
+/* Menu "Mais ações" */
+
+.menu-de-acoes {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: var(--raio);
+  background: var(--superficie);
+  border: 1px solid var(--linha);
+  box-shadow: var(--sombra);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--alvo);
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--raio-pequeno);
+  background: transparent;
+  text-align: left;
+  font-size: 15px;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--acento-suave);
+}
+
+.menu-item.perigoso {
+  color: var(--perigo);
+}

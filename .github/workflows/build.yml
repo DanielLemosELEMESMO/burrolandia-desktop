@@ -1,0 +1,49 @@
+name: Testes e build
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows (testes e .exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Testes de ponta a ponta (app de verdade)
+        run: npm run e2e
+      - name: Empacota o instalador e o portátil
+        run: npx electron-builder --win --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Burrolandia-Windows
+          path: release/*.exe
+          if-no-files-found: error
+      - name: Atualiza a versão de teste (pré-release "dev")
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete dev --yes --cleanup-tag || true
+          gh release create dev release/*.exe \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Versão de teste — ${GITHUB_REF_NAME}" \
+            --notes "Gerada automaticamente a partir do commit ${GITHUB_SHA::7}. Baixe o instalador (instala e abre) ou o portátil (abre sem instalar). O Windows pode avisar que o app não é assinado: clique em Mais informações → Executar assim mesmo."

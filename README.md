@@ -1,0 +1,61 @@
+# Burrolândia
+
+Sua biblioteca de EPUBs e PDFs, agradável de ler em qualquer tela. Esta é a versão desktop (Electron).
+
+O projeto segue as três forças herdadas da IRVV:
+
+- **Ambientação**: ao abrir, você está onde parou e sabe para onde ir.
+- **Rotina**: ler cabe no dia a dia, e voltar ao livro não custa nada.
+- **Acessibilidade**: qualquer pessoa lê com conforto, sem ajuda, do início ao fim.
+
+As decisões estão na spec: [`docs/superpowers/specs/2026-10-20-minha-biblioteca-design.md`](docs/superpowers/specs/2026-10-20-minha-biblioteca-design.md).
+
+## Testar no seu computador (Windows)
+
+A cada push, o GitHub Actions roda os testes e gera dois arquivos na pré-release **dev** (em _Releases_, no GitHub):
+
+- `Burrolandia-Instalador-<versão>.exe`: instala e abre (recomendado).
+- `Burrolandia-Portatil-<versão>.exe`: abre sem instalar.
+
+O app ainda não é assinado. Se o Windows avisar, clique em **Mais informações → Executar assim mesmo**.
+
+Os seus livros ficam em `%APPDATA%\Burrolandia`.
+
+## Desenvolver
+
+Requisitos: Node 22 ou mais novo.
+
+```bash
+npm install
+npm run dev        # abre o app com recarga automática
+npm test           # testes unitários (Vitest)
+npm run e2e        # build + testes de ponta a ponta com o app de verdade (Playwright)
+npm run typecheck
+npm run dist:win   # gera o instalador e o portátil em release/ (rode no Windows)
+```
+
+Num Linux sem tela (como o ambiente na nuvem), use `xvfb-run -a npm run e2e`.
+
+Capturas das telas principais:
+
+```bash
+npx electron-vite build
+xvfb-run -a npx playwright test --config tests/capturas/playwright.config.ts
+```
+
+## Como está organizado
+
+```
+src/
+  nucleo/     lógica sem Electron: tipos, EPUB (ler e escrever), validação, tempo em palavras
+  main/       processo principal: janela, protocolo app://, IPC, banco (SQLite embutido), biblioteca no disco
+  preload/    ponte mínima e tipada entre a interface e o processo principal
+  renderer/   interface em React; o leitor usa o foliate-js (vendorizado em src/renderer/src/vendor)
+tests/
+  unit/       Vitest
+  e2e/        Playwright com o app de verdade
+  fixtures/   livros de teste gerados na hora (Machado de Assis, domínio público)
+```
+
+- **Local primeiro**: tudo funciona sem internet e sem conta. A sincronização (Supabase) vem na parte 2.
+- **Formatos portáteis**: todo livro vira EPUB e a posição segue o Locator do Readium, para o app de celular entender a mesma posição.
