@@ -169,6 +169,12 @@ export class Biblioteca {
 
     const hashSha256 = createHash('sha256').update(bytes).digest('hex')
     const existente = this.banco.obterPorHash(hashSha256)
+    // Já estava na biblioteca, vindo da nuvem (o arquivo não desceu, ou é grande demais para subir):
+    // o arquivo daqui completa o livro, e ele passa a ser deste computador.
+    if (existente?.estado === 'na-nuvem') {
+      const pronto = await this.completarDaNuvem(existente.id, bytes, aoAndamento, { daqui: true })
+      return 'erro' in pronto ? erro(pronto.erro) : { tipo: 'adicionado', livro: pronto.livro }
+    }
     if (existente) return { tipo: 'repetido', livro: existente }
 
     const id = randomUUID()
@@ -376,6 +382,7 @@ export class Biblioteca {
     id: string,
     bytes: Uint8Array,
     aoAndamento?: (a: AndamentoImportacao) => void,
+    { daqui = false } = {},
   ): Promise<{ livro: Livro } | { erro: CodigoErroImportacao }> {
     const livro = ID_VALIDO.test(id) ? this.banco.obterLivro(id) : null
     if (!livro) return { erro: 'arquivo-inacessivel' }
@@ -400,7 +407,12 @@ export class Biblioteca {
       if (arquivo.nome === preparado.capa && !usarCapa) continue
       await writeFile(join(pastaDoLivro, arquivo.nome), arquivo.bytes)
     }
-    this.banco.completarDaNuvem(id, { arquivoOriginal: preparado.arquivoOriginal, arquivoLeitura: preparado.arquivoLeitura })
+    this.banco.completarDaNuvem(id, { arquivoOriginal: preparado.arquivoOriginal, arquivoLeitura: preparado.arquivoLeitura }, { daqui })
+    // Removido em outro aparelho enquanto era preparado: a pasta recriada sai também.
+    if (!this.banco.obterLivro(id)) {
+      await rm(pastaDoLivro, { recursive: true, force: true }).catch(() => {})
+      return { erro: 'arquivo-inacessivel' }
+    }
     if (usarCapa) this.banco.atualizarLivro(id, { capa: preparado.capa }, { hora: HORA_FRACA })
     return { livro: this.banco.obterLivro(id)! }
   }

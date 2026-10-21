@@ -233,6 +233,8 @@ export interface EstadoDaNuvem {
   pendentes: number
   /** Livros maiores que o limite, que ficam só neste aparelho. */
   grandesDemais: number
+  /** Livros cujo arquivo não subiu porque a conta chegou ao limite de espaço. */
+  semEspaco: number
 }
 
 export type CodigoDaConta =

@@ -330,10 +330,18 @@ export function TelaBiblioteca({
       <Dialogo aberto={!!removendo} titulo="Remover este livro?" aoFechar={() => setRemovendo(null)} alerta>
         {removendo && (
           <>
-            <p>
-              <strong>{removendo.titulo}</strong> sai da sua biblioteca, junto com a posição de leitura. O arquivo
-              original no seu computador continua onde estava.
-            </p>
+            {nuvem?.conta ? (
+              <p>
+                <strong>{removendo.titulo}</strong> sai da sua biblioteca em todos os aparelhos da sua conta, junto com a
+                posição de leitura, e o arquivo dele sai da nuvem. O arquivo original continua no computador de onde você o
+                adicionou.
+              </p>
+            ) : (
+              <p>
+                <strong>{removendo.titulo}</strong> sai da sua biblioteca, junto com a posição de leitura. O arquivo
+                original no seu computador continua onde estava.
+              </p>
+            )}
             <div className="botoes">
               <button type="button" className="botao" onClick={() => setRemovendo(null)}>
                 Cancelar

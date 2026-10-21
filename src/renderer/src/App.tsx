@@ -66,6 +66,8 @@ export function App() {
   const [nuvem, setNuvem] = useState<EstadoDaNuvem | null>(null)
   const [contaAberta, setContaAberta] = useState(false)
   const [baixando, setBaixando] = useState<(Baixando & { origem: Destino }) | null>(null)
+  /** O livro cujo download está na tela (fechado o diálogo, ele continua descendo, mas não abre sozinho). */
+  const downloadNaTela = useRef<string | null>(null)
   const livrosAtuais = useRef<Livro[]>([])
   livrosAtuais.current = livros
   // Buscar, no dock, pede o cursor no campo de busca da biblioteca; a biblioteca avisa quando atendeu.
@@ -143,13 +145,21 @@ export function App() {
   /** Um livro que está só na nuvem desce primeiro; depois abre onde você parou. */
   const baixarEAbrir = useCallback(
     async (livro: Livro, origem: Destino) => {
+      downloadNaTela.current = livro.id
       setBaixando({ livro, andamento: null, erro: null, origem })
       const resultado = await api.nuvem.baixar(livro.id)
-      if (!resultado.ok) return setBaixando({ livro, andamento: null, erro: resultado.mensagem, origem })
+      const naTela = downloadNaTela.current === livro.id
+      if (!resultado.ok) {
+        if (naTela) setBaixando({ livro, andamento: null, erro: resultado.mensagem, origem })
+        return
+      }
       // Sem capa na nuvem (um PDF de outro aparelho que não gerou a sua), a primeira página vira capa.
       await comCapa(resultado.livro)
       await recarregar()
+      // Fechou o diálogo no meio: o livro fica pronto na biblioteca, sem abrir sozinho.
+      if (downloadNaTela.current !== livro.id) return
       const aberto = await api.leitura.abrir(livro.id)
+      downloadNaTela.current = null
       setBaixando(null)
       if (aberto) setTela({ tipo: 'leitor', livro: aberto, origem })
     },
@@ -253,7 +263,10 @@ export function App() {
 
       <DialogoDeDownload
         estado={baixando}
-        aoFechar={() => setBaixando(null)}
+        aoFechar={() => {
+          downloadNaTela.current = null
+          setBaixando(null)
+        }}
         aoTentarDeNovo={() => baixando && void baixarEAbrir(baixando.livro, baixando.origem)}
       />
 

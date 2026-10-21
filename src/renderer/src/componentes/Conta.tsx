@@ -218,6 +218,13 @@ function DentroDaConta({ estado }: { estado: EstadoDaNuvem }) {
           {plural(uso.livros, 'livro', 'livros')} na conta · {megabytes(uso.bytes)} guardados na nuvem
         </p>
       )}
+      {estado.semEspaco > 0 && (
+        <p className="dica">
+          {plural(estado.semEspaco, 'livro ficou', 'livros ficaram')} só neste computador: a nuvem desta conta chegou ao
+          limite{uso && Number.isFinite(uso.limite) ? ` de ${megabytes(uso.limite)}` : ''}. A posição de leitura sincroniza
+          mesmo assim.
+        </p>
+      )}
       {estado.grandesDemais > 0 && (
         <p className="dica">
           {plural(estado.grandesDemais, 'livro ficou', 'livros ficaram')} só neste computador: o arquivo passa de 50 MB, o

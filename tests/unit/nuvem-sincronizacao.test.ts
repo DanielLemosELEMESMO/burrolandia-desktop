@@ -1,7 +1,7 @@
 // A sincronização entre aparelhos: cada aparelho com o seu banco e a sua pasta, todos na mesma nuvem
 // de mentira (com as regras do banco do Supabase).
 
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -609,6 +609,112 @@ describe('Nuvem: a sincronização entre aparelhos', () => {
     await b.nuvem.sincronizar()
     expect(b.banco.listarLivros()).toEqual([])
     expect(await livrosDaConta(b)).toEqual([])
+  })
+
+  it('além do espaço da conta, o arquivo fica só neste aparelho, e o app diz quantos ficaram', async () => {
+    const a = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const comCapa = await importar(a, livros.domCasmurro)
+    await importar(a, livros.memorias)
+    const capa = statSync(join(a.pasta, 'dados', 'livros', comCapa.id, comCapa.capa!)).size
+    const [maior, menor] = [statSync(livros.domCasmurro).size, statSync(livros.memorias).size].sort((x, y) => y - x)
+    // Cabe a capa e só um dos dois arquivos, qualquer que suba primeiro.
+    nuvem.limitePorConta = capa + maior + menor - 1
+    await entrar(a, { criar: true })
+    expect([...nuvem.arquivos.keys()].filter(chave => chave.startsWith('arquivos/'))).toHaveLength(1)
+    expect(a.nuvem.estado()).toMatchObject({ semEspaco: 1, problema: null })
+  })
+
+  it('um arquivo que a nuvem recusa não segura os outros, e espera antes de tentar de novo', async () => {
+    const a = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const recusado = await importar(a, livros.domCasmurro)
+    await importar(a, livros.memorias)
+    const envios: string[] = []
+    const enviar = a.remoto.enviar.bind(a.remoto)
+    a.remoto.enviar = async (bucket, caminho, bytes, tipo) => {
+      if (bucket === 'arquivos') envios.push(caminho)
+      if (bucket === 'arquivos' && caminho.startsWith(recusado.hashSha256)) throw new Error('A nuvem recusou o arquivo (413)')
+      return enviar(bucket, caminho, bytes, tipo)
+    }
+    await entrar(a, { criar: true })
+    expect([...nuvem.arquivos.keys()].filter(chave => chave.startsWith('arquivos/'))).toHaveLength(1)
+    expect(a.nuvem.estado().problema).toBeNull()
+    await a.nuvem.sincronizar()
+    expect(envios.filter(caminho => caminho.startsWith(recusado.hashSha256))).toHaveLength(1)
+  })
+
+  it('entre um arquivo e outro, a posição que mudou sobe sem esperar os outros arquivos', async () => {
+    const a = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const lido = await importar(a, livros.domCasmurro)
+    await importar(a, livros.memorias)
+    const portas = [portao(), portao()]
+    let envios = 0
+    const enviar = a.remoto.enviar.bind(a.remoto)
+    a.remoto.enviar = async (bucket, caminho, bytes, tipo) => {
+      if (bucket === 'arquivos') await portas[envios++]?.aberto
+      return enviar(bucket, caminho, bytes, tipo)
+    }
+    expect(await a.nuvem.criarConta(EMAIL, SENHA)).toMatchObject({ ok: true })
+    while (envios < 1) await dormir(5)
+    // Você lê enquanto o primeiro arquivo sobe; o segundo vai demorar.
+    a.banco.salvarPosicao(lido.id, posicao('/6/10', 0.4))
+    portas[0].abrir()
+    while (envios < 2) await dormir(5)
+    expect((await livrosDaConta(a)).find(l => l.hash === lido.hashSha256)!.posicao?.locations.cfi).toBe('/6/10')
+    portas[1].abrir()
+    await a.nuvem.sincronizar()
+  })
+
+  it('o mesmo arquivo adicionado aqui completa o livro que estava só na nuvem (grande demais para subir)', async () => {
+    const a = aparelho({ limiteDoArquivo: 100 })
+    const b = aparelho({ limiteDoArquivo: 100 })
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    await importar(a, livros.domCasmurro)
+    await entrar(a, { criar: true })
+    await entrar(b)
+    const [naNuvem] = b.banco.listarLivros()
+    const baixar = await b.nuvem.baixar(naNuvem.id)
+    expect(baixar).toMatchObject({ ok: false, mensagem: expect.stringContaining('mais que os 0 MB que a nuvem aceita por arquivo') })
+
+    const copia = join(b.pasta, 'dom.epub')
+    copyFileSync(livros.domCasmurro, copia)
+    const resultado = await b.biblioteca.importar(copia)
+    expect(resultado).toMatchObject({ tipo: 'adicionado', livro: { id: naNuvem.id, estado: 'pronto' } })
+    // Agora é deste computador: saindo da conta, ele fica.
+    await b.nuvem.sair()
+    expect(b.banco.listarLivros().map(l => l.id)).toEqual([naNuvem.id])
+  })
+
+  it('removido em outro aparelho enquanto desce: o download diz isso, e nada fica para trás', async () => {
+    const a = aparelho()
+    const b = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const livroA = await importar(a, livros.domCasmurro)
+    await entrar(a, { criar: true })
+    await entrar(b)
+    const [livroB] = b.banco.listarLivros()
+    const porta = portao()
+    let descendo = false
+    const baixar = b.remoto.baixar.bind(b.remoto)
+    b.remoto.baixar = async (bucket, caminho) => {
+      const bytes = await baixar(bucket, caminho)
+      if (bucket === 'arquivos') {
+        descendo = true
+        await porta.aberto
+      }
+      return bytes
+    }
+    const download = b.nuvem.baixar(livroB.id)
+    while (!descendo) await dormir(5)
+    await a.biblioteca.remover(livroA.id)
+    await a.nuvem.sincronizar()
+    await b.nuvem.sincronizar()
+    porta.abrir()
+    expect(await download).toMatchObject({ ok: false, mensagem: 'Este livro foi removido em outro aparelho enquanto descia.' })
+    expect(b.banco.listarLivros()).toEqual([])
+    expect(existsSync(join(b.pasta, 'dados', 'livros', livroB.id))).toBe(false)
   })
 
   it('arquivo maior que o limite fica só neste aparelho (o livro sobe, o arquivo não)', async () => {

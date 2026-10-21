@@ -30,21 +30,18 @@ export function DialogoDeDownload({
 }) {
   const erro = estado?.erro
   return (
-    <Dialogo
-      aberto={!!estado}
-      titulo={erro ? 'Não deu para baixar o livro' : 'Baixando o livro'}
-      aoFechar={aoFechar}
-      travado={!erro}
-      alerta={!!erro}
-    >
+    <Dialogo aberto={!!estado} titulo={erro ? 'Não deu para baixar o livro' : 'Baixando o livro'} aoFechar={aoFechar} alerta={!!erro}>
       {estado && (
         <>
           <LivroResumo livro={estado.livro} />
           {erro ? (
             <>
-              <p className="mensagem-erro">{erro}</p>
+              <p className="mensagem-erro" role="alert">
+                {erro}
+              </p>
               <div className="botoes">
-                <button type="button" className="botao principal" onClick={aoTentarDeNovo}>
+                {/* O foco vai para o que dá para fazer agora. */}
+                <button type="button" className="botao principal" onClick={aoTentarDeNovo} autoFocus>
                   Tentar de novo
                 </button>
                 <button type="button" className="botao" onClick={aoFechar}>
@@ -60,6 +57,12 @@ export function DialogoDeDownload({
               </p>
               <div className="barra-andamento indeterminada" role="progressbar" aria-label="Andamento">
                 <i />
+              </div>
+              <p className="dica">Fechando, o livro continua descendo e fica pronto na biblioteca.</p>
+              <div className="botoes">
+                <button type="button" className="botao" onClick={aoFechar}>
+                  Fechar
+                </button>
               </div>
             </>
           )}

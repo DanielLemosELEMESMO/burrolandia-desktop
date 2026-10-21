@@ -280,18 +280,38 @@ export class RemotoSupabase implements Remoto {
     return data.session.user.id
   }
 
+  /**
+   * Faz o pedido; se a sessão for recusada, renova uma vez e tenta de novo (com o relógio daqui
+   * atrasado, o token vence lá antes de o app renovar). Recusada de novo, terminou mesmo.
+   */
+  async #comSessao<T>(pedido: (usuario: string) => Promise<T>): Promise<T> {
+    try {
+      return await pedido(await this.#garantirSessao())
+    } catch (erro) {
+      if (!(erro instanceof SessaoTerminada)) throw erro
+      const { data, error } = await this.#cliente.auth.refreshSession()
+      if (error && isAuthRetryableFetchError(error)) throw new SemConexaoComANuvem(error.message)
+      if (!data.session) throw erro
+      return pedido(data.session.user.id)
+    }
+  }
+
   #erroDoBanco(erro: PostgrestError, status: number): Error {
-    if (status === 0) return new SemConexaoComANuvem(erro.message)
     if (erro.code === '42501' || erro.code === 'PGRST301' || status === 401) return new SessaoTerminada()
-    if (status >= 500) return new SemConexaoComANuvem(`${status}: ${erro.message}`)
+    // Sem rede, servidor fora, pedidos demais, função que ainda não existe (no meio de uma
+    // atualização do banco): passa, e tenta de novo daqui a pouco.
+    if (status === 0 || status === 429 || status >= 500 || erro.code === 'PGRST202') {
+      return new SemConexaoComANuvem(`${status}: ${erro.message}`)
+    }
     return new Error(`A nuvem recusou (${erro.code}): ${erro.message}`)
   }
 
-  async #rpc<T>(funcao: string, argumentos: Record<string, unknown>): Promise<T> {
-    await this.#garantirSessao()
-    const { data, error, status } = await this.#cliente.rpc(funcao, argumentos)
-    if (error) throw this.#erroDoBanco(error, status)
-    return data as T
+  #rpc<T>(funcao: string, argumentos: Record<string, unknown>): Promise<T> {
+    return this.#comSessao(async () => {
+      const { data, error, status } = await this.#cliente.rpc(funcao, argumentos)
+      if (error) throw this.#erroDoBanco(error, status)
+      return data as T
+    })
   }
 
   async guardar(livros: LivroParaGuardar[]) {
@@ -320,44 +340,52 @@ export class RemotoSupabase implements Remoto {
     }
   }
 
-  /** Erros do Storage: rede fora, sessão recusada, arquivo que não existe. */
+  /**
+   * Erros do Storage: rede fora, sessão recusada, arquivo que não existe. O Storage responde 400 com o
+   * código de verdade no corpo (statusCode); um 403 é sessão recusada só se for o token (a RLS
+   * recusando um caminho também é 403, e não tem nada a ver com a sessão).
+   */
   #erroDoArmazenamento(erro: { name?: string; message: string; status?: number; statusCode?: string }, caminho: string) {
-    const status = Number(erro.status ?? erro.statusCode ?? 0)
-    if (erro.name === 'StorageUnknownError' || !status) return new SemConexaoComANuvem(erro.message)
-    if (status === 404 || erro.statusCode === '404' || /not.?found/i.test(erro.message)) return new NaoEstaNaNuvem(caminho)
-    if (status === 401 || status === 403) return new SessaoTerminada()
-    if (status >= 500) return new SemConexaoComANuvem(`${status}: ${erro.message}`)
-    return new Error(`A nuvem recusou o arquivo ${caminho} (${status}): ${erro.message}`)
+    const codigo = Number(erro.statusCode ?? erro.status ?? 0)
+    if (erro.name === 'StorageUnknownError' || !codigo) return new SemConexaoComANuvem(erro.message)
+    if (codigo === 404 || /not.?found/i.test(erro.message)) return new NaoEstaNaNuvem(caminho)
+    if (codigo === 401 || (codigo === 403 && /jwt|token|signature|expired/i.test(erro.message))) return new SessaoTerminada()
+    if (codigo === 429 || codigo >= 500) return new SemConexaoComANuvem(`${codigo}: ${erro.message}`)
+    return new Error(`A nuvem recusou o arquivo ${caminho} (${codigo}): ${erro.message}`)
   }
 
-  async enviar(bucket: Bucket, caminho: string, bytes: Uint8Array, tipo: string) {
-    const id = await this.#garantirSessao()
-    const { error } = await this.#cliente.storage
-      .from(bucket)
-      .upload(`${id}/${caminho}`, bytes, { contentType: tipo, upsert: true, cacheControl: '31536000' })
-    if (error) throw this.#erroDoArmazenamento(error, caminho)
+  enviar(bucket: Bucket, caminho: string, bytes: Uint8Array, tipo: string) {
+    return this.#comSessao(async id => {
+      const { error } = await this.#cliente.storage
+        .from(bucket)
+        .upload(`${id}/${caminho}`, bytes, { contentType: tipo, upsert: true, cacheControl: '31536000' })
+      if (error) throw this.#erroDoArmazenamento(error, caminho)
+    })
   }
 
-  async baixar(bucket: Bucket, caminho: string) {
-    const id = await this.#garantirSessao()
-    const { data, error } = await this.#cliente.storage.from(bucket).download(`${id}/${caminho}`)
-    if (error) throw this.#erroDoArmazenamento(error, caminho)
-    return new Uint8Array(await data.arrayBuffer())
+  baixar(bucket: Bucket, caminho: string) {
+    return this.#comSessao(async id => {
+      const { data, error } = await this.#cliente.storage.from(bucket).download(`${id}/${caminho}`)
+      if (error) throw this.#erroDoArmazenamento(error, caminho)
+      return new Uint8Array(await data.arrayBuffer())
+    })
   }
 
-  async listar(bucket: Bucket, pasta: string) {
-    const id = await this.#garantirSessao()
-    const { data, error } = await this.#cliente.storage.from(bucket).list(`${id}/${pasta.replace(/\/$/, '')}`, { limit: 1000 })
-    if (error) throw this.#erroDoArmazenamento(error, pasta)
-    // Subpastas aparecem sem id; só os arquivos interessam.
-    return data.filter(item => item.id).map(item => item.name)
+  listar(bucket: Bucket, pasta: string) {
+    return this.#comSessao(async id => {
+      const { data, error } = await this.#cliente.storage.from(bucket).list(`${id}/${pasta.replace(/\/$/, '')}`, { limit: 1000 })
+      if (error) throw this.#erroDoArmazenamento(error, pasta)
+      // Subpastas aparecem sem id; só os arquivos interessam.
+      return data.filter(item => item.id).map(item => item.name)
+    })
   }
 
   async apagar(bucket: Bucket, caminhos: string[]) {
     if (!caminhos.length) return
-    const id = await this.#garantirSessao()
-    const { error } = await this.#cliente.storage.from(bucket).remove(caminhos.map(c => `${id}/${c}`))
-    if (error) throw this.#erroDoArmazenamento(error, caminhos.join(', '))
+    await this.#comSessao(async id => {
+      const { error } = await this.#cliente.storage.from(bucket).remove(caminhos.map(c => `${id}/${c}`))
+      if (error) throw this.#erroDoArmazenamento(error, caminhos.join(', '))
+    })
   }
 
   /** Para os testes: desliga a renovação automática (senão o processo não termina). */

@@ -606,11 +606,22 @@ export class Banco {
     return total
   }
 
-  /** O arquivo de um livro da nuvem chegou e foi preparado: o livro fica pronto neste aparelho. */
-  completarDaNuvem(id: string, { arquivoOriginal, arquivoLeitura }: { arquivoOriginal: string; arquivoLeitura: string | null }) {
+  /**
+   * O arquivo de um livro da nuvem chegou e foi preparado: o livro fica pronto neste aparelho. daqui:
+   * o arquivo veio deste computador (você adicionou o mesmo), e o livro fica ao sair da conta.
+   */
+  completarDaNuvem(
+    id: string,
+    { arquivoOriginal, arquivoLeitura }: { arquivoOriginal: string; arquivoLeitura: string | null },
+    { daqui = false } = {},
+  ) {
     this.#db
-      .prepare("UPDATE livros SET estado = 'pronto', arquivo_original = ?, arquivo_leitura = ?, atualizado_em = ? WHERE id = ?")
-      .run(arquivoOriginal, arquivoLeitura, new Date().toISOString(), id)
+      .prepare(
+        `UPDATE livros SET estado = 'pronto', arquivo_original = ?, arquivo_leitura = ?, atualizado_em = ?,
+           veio_da_nuvem = CASE WHEN ? THEN 0 ELSE veio_da_nuvem END
+         WHERE id = ?`,
+      )
+      .run(arquivoOriginal, arquivoLeitura, new Date().toISOString(), daqui ? 1 : 0, id)
   }
 
   /**

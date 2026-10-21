@@ -47,6 +47,8 @@ const VOLTANDO = 30_000
 const VOLTA = 60_000
 const LOTE = 100
 const PAGINA = 500
+/** Um arquivo que a nuvem recusou (não a conexão) tenta de novo depois disso. */
+const DEPOIS_DE_RECUSADO = 60 * 60_000
 /** Saindo da conta, quanto esperar o que falta subir (sem conexão, nada espera). */
 const ANTES_DE_SAIR = 3_000
 /** Saindo ou trocando de conta, quanto esperar o ciclo em andamento parar (os pedidos são cancelados). */
@@ -74,6 +76,7 @@ export const MENSAGENS_DA_CONTA: Record<CodigoDaConta, string> = {
 }
 
 const espera = (ms: number) => new Promise<void>(pronto => setTimeout(pronto, ms).unref?.())
+const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`
 
 /** O que o banco da nuvem aceita (os limites dele): um livro estranho não trava a fila dos outros. */
 function caber(livro: LivroParaGuardar): LivroParaGuardar {
@@ -110,6 +113,10 @@ export class Nuvem {
   readonly #baixando = new Map<string, Promise<ResultadoDoDownload>>()
   /** Livros que a nuvem recusou nesta versão (id → versão): esperam mudar para tentar de novo. */
   readonly #recusados = new Map<string, number>()
+  /** Arquivos que a nuvem recusou (id → quando): os outros seguem, e eles tentam de novo mais tarde. */
+  readonly #arquivosRecusados = new Map<string, number>()
+  /** Livros cujo arquivo não subiu na última vez por falta de espaço na conta. */
+  #semEspaco = 0
   readonly #tempos: Required<OpcoesDaNuvem>
   #aoChegarPosicao: (id: string, posicao: Locator) => void = () => {}
 
@@ -135,6 +142,7 @@ export class Nuvem {
       problema: null,
       pendentes: 0,
       grandesDemais: 0,
+      semEspaco: 0,
     }
     remoto?.aoTerminarSessao(() => this.#sessaoTerminou())
   }
@@ -149,6 +157,7 @@ export class Nuvem {
       ...this.#estado,
       pendentes: this.#estado.conta ? this.banco.contarPendentes() : 0,
       grandesDemais: this.banco.contarGrandesDemais(this.#tempos.limiteDoArquivo),
+      semEspaco: this.#estado.conta ? this.#semEspaco : 0,
     }
   }
 
@@ -165,7 +174,7 @@ export class Nuvem {
     this.#estado = { ...this.#estado, conta, problema: !conta && guardada ? 'sessao-terminada' : null }
     this.#avisar()
     if (!conta) return
-    if (guardada && guardada.id !== conta.id) this.#esquecer()
+    if (guardada && guardada.id !== conta.id) await this.#esquecer()
     this.banco.salvarPreferencia(CONTA, conta)
     this.#comecarPeriodica()
     await this.sincronizar()
@@ -194,7 +203,7 @@ export class Nuvem {
     }
     // Outra conta: o que este aparelho sabia da anterior não vale para esta.
     const anterior = this.banco.lerPreferencia<Conta>(CONTA)
-    if (anterior && anterior.id !== conta.id) this.#esquecer()
+    if (anterior && anterior.id !== conta.id) await this.#esquecer()
     this.banco.salvarPreferencia(CONTA, conta)
     this.#geracao++
     this.#estado = { ...this.#estado, conta, problema: null }
@@ -210,7 +219,7 @@ export class Nuvem {
     if (this.#estado.conta && this.banco.contarPendentes()) await Promise.race([this.sincronizar(), espera(ANTES_DE_SAIR)])
     await this.#interromper()
     await this.remoto?.sair().catch(erro => console.warn('Não deu para avisar a nuvem da saída', erro))
-    this.#esquecer()
+    await this.#esquecer()
     this.banco.apagarPreferencia(CONTA)
     this.#estado = { ...this.#estado, conta: null, problema: null, sincronizando: false }
     this.#avisar(true)
@@ -229,10 +238,13 @@ export class Nuvem {
   }
 
   /** O que este aparelho sabia da conta: livros que vieram da nuvem, envios, marcador. */
-  #esquecer() {
+  async #esquecer() {
     this.banco.esquecerNuvem()
     this.banco.apagarPreferencia(MARCADOR)
-    this.biblioteca.limparPastasOrfas().catch(erro => console.warn('Não deu para apagar as pastas dos livros da nuvem', erro))
+    this.#recusados.clear()
+    this.#arquivosRecusados.clear()
+    this.#semEspaco = 0
+    await this.biblioteca.limparPastasOrfas().catch(erro => console.warn('Não deu para apagar as pastas dos livros da nuvem', erro))
   }
 
   #sessaoTerminou() {
@@ -564,16 +576,46 @@ export class Nuvem {
     if (sobras.length && geracao === this.#geracao) await this.remoto!.apagar('capas', sobras.map(nome => `${livro.hash}/${nome}`))
   }
 
+  /**
+   * Sobe os arquivos que faltam, um por vez, até o limite de espaço da conta. Um arquivo que a nuvem
+   * recusa não segura os outros (tenta de novo daqui a uma hora), e entre um arquivo e outro o que
+   * mudou aqui (a posição de leitura) sobe sem esperar.
+   */
   async #enviarArquivos(geracao: number) {
-    for (const livro of this.banco.semArquivoNaNuvem(this.#tempos.limiteDoArquivo)) {
+    const agora = Date.now()
+    const faltam = this.banco
+      .semArquivoNaNuvem(this.#tempos.limiteDoArquivo)
+      .filter(livro => agora - (this.#arquivosRecusados.get(livro.id) ?? 0) > DEPOIS_DE_RECUSADO)
+    if (!faltam.length) {
+      this.#semEspaco = 0
+      return
+    }
+    const uso = await this.remoto!.uso()
+    let livre = uso.limite - uso.bytes
+    let semEspaco = 0
+    for (const livro of faltam) {
       if (geracao !== this.#geracao) return
+      if (livro.tamanhoBytes > livre) {
+        semEspaco++
+        continue
+      }
       const bytes = await this.biblioteca.lerOriginal(livro.id)
       if (!bytes) continue
       const nome = `${livro.hashSha256}.${livro.formatoOriginal}`
-      await this.remoto!.enviar('arquivos', nome, bytes, tipoDe(nome))
+      try {
+        await this.remoto!.enviar('arquivos', nome, bytes, tipoDe(nome))
+      } catch (erro) {
+        if (erro instanceof SemConexaoComANuvem || erro instanceof SessaoTerminada) throw erro
+        console.warn('A nuvem recusou o arquivo de um livro; tento de novo mais tarde', livro.hashSha256, erro)
+        this.#arquivosRecusados.set(livro.id, Date.now())
+        continue
+      }
       if (geracao !== this.#geracao) return
       this.banco.marcarArquivoNaNuvem(livro.id, nome)
+      livre -= bytes.length
+      await this.#enviarLivros(geracao)
     }
+    this.#semEspaco = semEspaco
   }
 
   /** Quanto a conta guarda na nuvem; null sem conta ou sem conexão. */
@@ -597,10 +639,13 @@ export class Nuvem {
     if (livro.estado !== 'na-nuvem') return { ok: true, livro }
     if (!this.remoto || !this.#estado.conta) return { ok: false, mensagem: 'Entre na sua conta para baixar este livro.' }
     if (!livro.arquivoNaNuvem) {
+      const limite = this.#tempos.limiteDoArquivo
       return {
         ok: false,
         mensagem:
-          'O arquivo deste livro ainda não subiu do aparelho onde ele foi adicionado. Abra o app lá, com internet, e ele sobe sozinho.',
+          livro.tamanhoBytes > limite
+            ? `Este livro tem ${megabytes(livro.tamanhoBytes)}, mais que os ${megabytes(limite)} que a nuvem aceita por arquivo: ele fica só no aparelho onde foi adicionado. Para ler aqui, adicione o mesmo arquivo neste computador.`
+            : 'O arquivo deste livro ainda não subiu do aparelho onde ele foi adicionado (sem internet lá, ou a nuvem da conta cheia). Para ler aqui, abra o app lá com internet, ou adicione o mesmo arquivo neste computador.',
       }
     }
     try {
@@ -609,6 +654,8 @@ export class Nuvem {
       const pronto = await this.biblioteca.completarDaNuvem(id, bytes, a => {
         if (a.etapa !== 'lendo') aoAndamento?.({ etapa: a.etapa, atual: a.atual, total: a.total })
       })
+      // Removido em outro aparelho enquanto descia (a remoção chegou por outra sincronização).
+      if (!this.banco.paraSincronia(id)) return { ok: false, mensagem: 'Este livro foi removido em outro aparelho enquanto descia.' }
       if ('erro' in pronto) {
         return {
           ok: false,

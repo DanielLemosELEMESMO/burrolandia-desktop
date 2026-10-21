@@ -201,7 +201,7 @@ export async function abrirNuvemFalsa() {
 
       // Storage
       if (caminho.startsWith('/storage/v1/object/')) {
-        if (!conta) return json(res, 400, { statusCode: '403', error: 'Unauthorized', message: 'sem sessão' })
+        if (!conta) return json(res, 400, { statusCode: '403', error: 'Unauthorized', message: 'invalid jwt: sem sessão' })
         const resto = caminho.slice('/storage/v1/object/'.length)
         if (resto.startsWith('list/') && req.method === 'POST') {
           const bucket = resto.slice('list/'.length)
@@ -219,7 +219,7 @@ export async function abrirNuvemFalsa() {
         }
         // O primeiro nível do caminho é a conta: ninguém mexe na pasta de outra.
         const [bucket, dono] = resto.split('/')
-        if (dono !== conta.id) return json(res, 400, { statusCode: '403', error: 'Unauthorized', message: 'pasta de outra conta' })
+        if (dono !== conta.id) return json(res, 400, { statusCode: '403', error: 'Unauthorized', message: 'new row violates row-level security policy (pasta de outra conta)' })
         if (req.method === 'POST' || req.method === 'PUT') {
           nuvem.arquivos.set(resto, { bytes: new Uint8Array(await corpo(req)), tipo: String(req.headers['content-type']) })
           return json(res, 200, { Id: randomUUID(), Key: resto })
