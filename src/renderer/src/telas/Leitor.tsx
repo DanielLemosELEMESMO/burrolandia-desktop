@@ -197,14 +197,13 @@ export function TelaLeitor({
   // Só vira "onde você parou" o que você fez: virar a página, rolar, o sumário, um link do livro.
   // Abrir o livro, mudar a letra ou o tamanho da janela também mexem no texto, mas não são você: se
   // contassem, um aparelho que só abriu o livro passaria por cima da leitura feita em outro.
-  const comando = useRef(0)
+  /** Quando foi o seu último comando (-Infinity: nenhum ainda; o relógio da janela começa em 0 ao abrir o app). */
+  const comando = useRef(Number.NEGATIVE_INFINITY)
   /** O texto já abriu onde você parou (antes disso, nada do que acontece é seu). */
   const textoPronto = useRef(false)
   const marcarComando = useCallback(() => {
     if (textoPronto.current || modoAtual.current === 'original') comando.current = performance.now()
   }, [])
-  /** A posição que chegou de outro aparelho enquanto o texto ainda abria. */
-  const posicaoQueChegou = useRef<Locator | null>(null)
 
   const guardarPosicao = useCallback(
     (locator: Locator) => {
@@ -228,7 +227,7 @@ export function TelaLeitor({
   // Lido em outro aparelho com este livro aberto aqui: o leitor vai para lá. Ir para lá não é você
   // mexendo, então não grava nada (a posição já está no banco).
   const irParaAPosicaoQueChegou = useCallback(async (posicao: Locator) => {
-    comando.current = 0
+    comando.current = Number.NEGATIVE_INFINITY
     if (modoAtual.current === 'original') {
       const pagina = paginaDoLocator(posicao)
       if (!pagina || !original.current) return
@@ -244,13 +243,28 @@ export function TelaLeitor({
   useEffect(
     () =>
       api.leitura.aoChegarPosicao((id, posicao) => {
-        // Uma gravação sua esperando para sair é mais nova que a que chegou: ela vale.
+        // Uma gravação sua esperando para sair é mais nova que a que chegou: ela vale. Antes de o texto
+        // abrir, quem cuida é a conferência logo depois que ele abre.
         if (id !== livro.id || salvamento.current !== undefined) return
-        if (modoAtual.current === 'texto' && !textoPronto.current) posicaoQueChegou.current = posicao
-        else void irParaAPosicaoQueChegou(posicao)
+        if (modoAtual.current === 'texto' && !textoPronto.current) return
+        void irParaAPosicaoQueChegou(posicao)
       }),
     [livro.id, irParaAPosicaoQueChegou],
   )
+
+  // A posição pode ter mudado no banco entre abrir o livro e o leitor ficar pronto (a de outro
+  // aparelho chegando com a rede lenta, antes de o leitor ouvir o aviso). Pronto, confere: se a do
+  // banco é outra e você ainda não mexeu, vai para ela.
+  const conferirPosicao = useCallback(async () => {
+    const noBanco = await api.leitura.posicao(livro.id)
+    if (!noBanco || ultimaPosicao.current || salvamento.current !== undefined) return
+    if (JSON.stringify(noBanco) !== JSON.stringify(livro.posicao)) void irParaAPosicaoQueChegou(noBanco)
+  }, [livro.id, livro.posicao, irParaAPosicaoQueChegou])
+
+  useEffect(() => {
+    // Sem texto adaptado (PDF digitalizado), só há a página original: confere ao abrir.
+    if (!livro.arquivoLeitura) void conferirPosicao()
+  }, [livro.arquivoLeitura, conferirPosicao])
 
   useEffect(() => {
     if (!recado) return
@@ -439,10 +453,7 @@ export function TelaLeitor({
         if (!ativo) return
         textoPronto.current = true
         setEstado('pronto')
-        // Chegou uma posição mais nova de outro aparelho enquanto o livro abria: vai para ela.
-        const chegou = posicaoQueChegou.current
-        posicaoQueChegou.current = null
-        if (chegou) void irParaAPosicaoQueChegou(chegou)
+        void conferirPosicao()
       } catch (erro) {
         console.error(erro)
         if (!ativo) return

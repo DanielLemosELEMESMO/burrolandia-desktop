@@ -20,6 +20,7 @@ const api: ApiBurrolandia = {
   leitura: {
     abrir: id => ipcRenderer.invoke('leitura:abrir', id),
     fechar: () => ipcRenderer.invoke('leitura:fechar'),
+    posicao: id => ipcRenderer.invoke('leitura:posicao', id),
     salvarPosicao: (id, posicao) => ipcRenderer.invoke('leitura:salvar-posicao', id, posicao),
     salvarPosicaoAgora: (id, posicao) => {
       ipcRenderer.sendSync('leitura:salvar-posicao-agora', id, posicao)

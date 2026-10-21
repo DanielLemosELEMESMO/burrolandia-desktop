@@ -52,32 +52,35 @@ test('o livro aberto e parado num aparelho não passa por cima da leitura feita 
   await nuvem.fechar()
 })
 
-test('reabrindo com a rede lenta, o livro vai para onde você parou no outro aparelho quando a posição chega', async () => {
-  const nuvem = await abrirNuvemFalsa()
-  const posicaoNaNuvem = () => nuvem.nuvem.livrosDe(nuvem.nuvem.contas.get(EMAIL)!.conta.id)[0].posicao?.locations.cfi
+// A posição de B chega enquanto o livro ainda abre em A (2,5 s: o leitor confere ao ficar pronto) ou
+// depois que ele já abriu (6 s: o aviso leva o leitor até ela).
+for (const atraso of [2500, 6000]) {
+  test(`reabrindo com a rede lenta (${atraso / 1000} s), o livro vai para onde você parou no outro aparelho`, async () => {
+    const nuvem = await abrirNuvemFalsa()
+    const posicaoNaNuvem = () => nuvem.nuvem.livrosDe(nuvem.nuvem.contas.get(EMAIL)!.conta.id)[0].posicao?.locations.cfi
 
-  // A fecha o app dentro do livro (ele reabre lá).
-  const a = await aparelhoAComOLivroAberto(nuvem.url)
-  await a.app.close()
-  const ondeB = await lerMaisEmOutroAparelho(nuvem.url, a.onde)
+    // A fecha o app dentro do livro (ele reabre lá).
+    const a = await aparelhoAComOLivroAberto(nuvem.url)
+    await a.app.close()
+    const ondeB = await lerMaisEmOutroAparelho(nuvem.url, a.onde)
 
-  // A reabre numa rede em que "o que mudou" demora 6 segundos: o livro abre onde A estava e, quando
-  // a posição de B chega, vai para ela, sem gravar nada por cima.
-  nuvem.lentidao.mudancas = 6000
-  const a2 = await abrirApp(a.dados, { nuvem: nuvem.url })
-  const leitor = a2.janela.getByRole('main', { name: 'Lendo Dom Casmurro' })
-  await expect(leitor).toHaveAttribute('data-cfi', a.onde, { timeout: 30_000 })
-  await expect(leitor).toHaveAttribute('data-cfi', ondeB, { timeout: 30_000 })
-  await expect(a2.janela.getByRole('status').filter({ hasText: 'onde você parou no outro aparelho' })).toBeVisible()
-  nuvem.lentidao.mudancas = 0
-  await a2.janela.waitForTimeout(1000)
-  expect(posicaoNaNuvem()).toBe(ondeB)
+    // A reabre numa rede em que "o que mudou" demora: o livro abre e, quando a posição de B chega,
+    // vai para ela, sem gravar nada por cima.
+    nuvem.lentidao.mudancas = atraso
+    const a2 = await abrirApp(a.dados, { nuvem: nuvem.url })
+    const leitor = a2.janela.getByRole('main', { name: 'Lendo Dom Casmurro' })
+    await expect(leitor).toHaveAttribute('data-cfi', ondeB, { timeout: 30_000 })
+    await expect(a2.janela.getByRole('status').filter({ hasText: 'onde você parou no outro aparelho' })).toBeVisible()
+    nuvem.lentidao.mudancas = 0
+    await a2.janela.waitForTimeout(1000)
+    expect(posicaoNaNuvem()).toBe(ondeB)
 
-  // Daqui para a frente, o que A ler vale.
-  const ondeA2 = await virar(a2.janela, leitor, 'ArrowRight')
-  await sairDoLeitor(a2.janela)
-  await sincronizarAgora(a2.janela)
-  expect(posicaoNaNuvem()).toBe(ondeA2)
-  await a2.app.close()
-  await nuvem.fechar()
-})
+    // Daqui para a frente, o que A ler vale.
+    const ondeA2 = await virar(a2.janela, leitor, 'ArrowRight')
+    await sairDoLeitor(a2.janela)
+    await sincronizarAgora(a2.janela)
+    expect(posicaoNaNuvem()).toBe(ondeA2)
+    await a2.app.close()
+    await nuvem.fechar()
+  })
+}

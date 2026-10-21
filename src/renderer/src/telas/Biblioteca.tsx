@@ -322,7 +322,8 @@ export function TelaBiblioteca({
 
       <TrocarCapa
         key={trocandoCapa?.livro.id ?? 'nenhum'}
-        livro={trocandoCapa?.aberto ? trocandoCapa.livro : null}
+        // O livro como está agora na biblioteca: reconhecido com o diálogo aberto, as capas do catálogo aparecem.
+        livro={trocandoCapa?.aberto ? (livros.find(l => l.id === trocandoCapa.livro.id) ?? trocandoCapa.livro) : null}
         aoFechar={() => setTrocandoCapa(atual => atual && { ...atual, aberto: false })}
         aoTrocar={() => aoMudarBiblioteca()}
       />

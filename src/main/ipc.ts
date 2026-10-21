@@ -103,6 +103,8 @@ export function registrarIpc(
     aoMudarAparencia()
   })
 
+  ipcMain.handle('leitura:posicao', (_, id: unknown) => (idValido(id) ? (biblioteca.obter(id)?.posicao ?? null) : null))
+
   ipcMain.handle('leitura:salvar-posicao', (_, id: unknown, posicao: unknown) => {
     const locator = validarLocator(posicao)
     if (idValido(id) && locator) biblioteca.salvarPosicao(id, locator)

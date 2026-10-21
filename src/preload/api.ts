@@ -39,6 +39,8 @@ export interface ApiBurrolandia {
   leitura: {
     abrir(id: string): Promise<Livro | null>
     fechar(): Promise<void>
+    /** A posição guardada agora (pode ter chegado de outro aparelho depois de abrir). */
+    posicao(id: string): Promise<Locator | null>
     salvarPosicao(id: string, posicao: Locator): Promise<void>
     /** Salva na hora, sem esperar: para quando a janela está fechando. */
     salvarPosicaoAgora(id: string, posicao: Locator): void

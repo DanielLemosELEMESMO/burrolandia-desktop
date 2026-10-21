@@ -81,7 +81,8 @@ function usarPaginasDoPdf(livro: Livro, querer: boolean) {
       pdf.current = null
       void aberto?.fechar()
     }
-  }, [livro, querer])
+    // Pelo id e pelo arquivo: o livro que chega de novo (a biblioteca se atualizou) não recarrega as páginas.
+  }, [livro.id, livro.arquivoOriginal, querer])
 
   return { miniaturas, carga, pdf }
 }
