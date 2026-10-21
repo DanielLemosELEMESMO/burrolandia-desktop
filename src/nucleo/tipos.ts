@@ -1,7 +1,8 @@
 // Tipos compartilhados entre o processo principal, o renderer e (no futuro) o servidor e o celular.
 
 export type FormatoOriginal = 'epub' | 'pdf'
-export type EstadoLivro = 'pronto' | 'processando' | 'erro'
+/** na-nuvem: o livro veio da sua conta e o arquivo ainda não está neste aparelho (baixa ao abrir). */
+export type EstadoLivro = 'pronto' | 'processando' | 'erro' | 'na-nuvem'
 
 /**
  * Onde você está no livro. Segue o Locator do Readium
@@ -193,3 +194,60 @@ export interface AndamentoImportacao {
   atual?: number
   total?: number
 }
+
+/** A sua conta na nuvem (parte 2). */
+export interface Conta {
+  id: string
+  email: string
+}
+
+/** O que a sua conta guarda na nuvem. */
+export interface UsoDaNuvem {
+  /** Livros na conta. */
+  livros: number
+  /** Livros com o arquivo na nuvem (os outros ficaram só no aparelho de onde vieram). */
+  arquivos: number
+  /** Bytes guardados, capas e arquivos. */
+  bytes: number
+}
+
+/** O maior arquivo que sobe para a nuvem (o limite por arquivo do plano gratuito do Supabase). */
+export const LIMITE_DO_ARQUIVO_NA_NUVEM = 50 * 1024 * 1024
+
+export type ProblemaDaNuvem = 'sem-conexao' | 'sessao-terminada' | 'falhou'
+
+/** Como está a nuvem, para o botão da conta e a tela "Sua conta". */
+export interface EstadoDaNuvem {
+  /** false: este app está sem nuvem (nos testes sem internet, por exemplo). */
+  disponivel: boolean
+  conta: Conta | null
+  sincronizando: boolean
+  /** A última sincronização que deu certo (ISO). */
+  ultimaVez: string | null
+  /** O que deu errado na última tentativa, se deu. */
+  problema: ProblemaDaNuvem | null
+  /** Mudanças deste aparelho que ainda não subiram. */
+  pendentes: number
+  /** Livros maiores que o limite, que ficam só neste aparelho. */
+  grandesDemais: number
+}
+
+export type CodigoDaConta =
+  | 'senha-errada'
+  | 'conta-existe'
+  | 'senha-fraca'
+  | 'email-invalido'
+  | 'muitas-tentativas'
+  | 'sem-conexao'
+  | 'falhou'
+
+export type ResultadoDaConta = { ok: true; estado: EstadoDaNuvem } | { ok: false; codigo: CodigoDaConta; mensagem: string }
+
+/** Andamento de um livro que está vindo da nuvem. */
+export interface AndamentoDoDownload {
+  etapa: 'baixando' | 'adaptando' | 'guardando'
+  atual?: number
+  total?: number
+}
+
+export type ResultadoDoDownload = { ok: true; livro: Livro } | { ok: false; mensagem: string }
