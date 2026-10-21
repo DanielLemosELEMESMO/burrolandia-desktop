@@ -336,7 +336,7 @@ function Conteudo({ livro, aoFechar, aoTrocar }: { livro: Livro; aoFechar: () =>
                 !andamento &&
                 void trocar(
                   'Guardando a capa…',
-                  async () => api.biblioteca.salvarCapa(livro.id, await recortarEmJpeg(fonte, selecao)),
+                  async () => api.biblioteca.salvarCapa(livro.id, await recortarEmJpeg(fonte, selecao), { escolhida: true }),
                   'Não deu para usar esta imagem como capa. Tente outra.',
                 )
               }

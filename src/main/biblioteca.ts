@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join, resolve, sep } from 'node:path'
 import { ErroEpub, imagensDoEpub, lerEpub } from '@nucleo/epub/ler'
-import type { LivroNaNuvem } from '@nucleo/nuvem/regras'
+import { HORA_FRACA, type LivroNaNuvem } from '@nucleo/nuvem/regras'
 import { converterPdfEmEpub, type OpcoesDeConversao, type ResultadoConversao } from '@nucleo/pdf/converter'
 import type {
   AndamentoImportacao,
@@ -266,14 +266,17 @@ export class Biblioteca {
     }
   }
 
-  /** Guarda a capa (a gerada pela interface a partir da primeira página do PDF, ou a do catálogo). */
-  async salvarCapa(id: string, bytes: Uint8Array): Promise<Livro | null> {
+  /**
+   * Guarda a capa: a gerada da primeira página do PDF ou a do catálogo para um livro sem capa (o app
+   * sozinho: hora fraca), ou a que você escolheu (escolhida: vale sobre as dos outros aparelhos).
+   */
+  async salvarCapa(id: string, bytes: Uint8Array, { escolhida = false } = {}): Promise<Livro | null> {
     const livro = ID_VALIDO.test(id) ? this.banco.obterLivro(id) : null
     const nome = nomeDaCapa(bytes)
     if (!livro || !nome) return null
     if (livro.capa === nome) return livro
     await writeFile(join(this.#pastaLivros, id, nome), bytes)
-    this.banco.atualizarLivro(id, { capa: nome })
+    this.banco.atualizarLivro(id, { capa: nome }, { hora: escolhida ? undefined : HORA_FRACA })
     // A anterior sai do disco depois que o banco já aponta para a nova.
     if (livro.capa && ARQUIVO_DE_CAPA.test(livro.capa)) {
       await rm(join(this.#pastaLivros, id, livro.capa), { force: true }).catch(() => {})
@@ -304,9 +307,9 @@ export class Biblioteca {
     }
   }
 
-  /** A capa do livro, para subir para a nuvem. */
-  lerCapa(id: string): Promise<Uint8Array | null> {
-    return this.#ler(id, this.obter(id)?.capa ?? null)
+  /** A capa do livro (a de agora, ou a deste nome), para subir para a nuvem. */
+  lerCapa(id: string, nome = this.obter(id)?.capa ?? null): Promise<Uint8Array | null> {
+    return this.#ler(id, nome)
   }
 
   /** O arquivo original do livro, para subir para a nuvem. */
@@ -315,36 +318,54 @@ export class Biblioteca {
     return this.#ler(id, livro?.estado === 'pronto' ? livro.arquivoOriginal : null)
   }
 
-  /** A capa subiu para a nuvem com o nome do conteúdo; a daqui passa a ter o mesmo nome. */
-  async marcarCapaNaNuvem(id: string, nome: string, bytes: Uint8Array) {
+  /**
+   * A capa `capaQueSubiu` subiu para a nuvem com o nome do conteúdo; a daqui passa a ter o mesmo nome.
+   * Se a capa foi trocada durante o envio, nada muda (a nova sobe na próxima vez). Devolve se marcou.
+   */
+  async marcarCapaNaNuvem(id: string, capaQueSubiu: string, nome: string, bytes: Uint8Array): Promise<boolean> {
     const livro = ID_VALIDO.test(id) ? this.banco.obterLivro(id) : null
-    if (!livro?.capa) return
-    if (livro.capa !== nome) await writeFile(join(this.#pastaLivros, id, nome), bytes)
-    this.banco.marcarCapaNaNuvem(id, nome)
-    if (livro.capa !== nome && ARQUIVO_DE_CAPA.test(livro.capa)) {
-      await rm(join(this.#pastaLivros, id, livro.capa), { force: true }).catch(() => {})
+    if (livro?.capa !== capaQueSubiu) return false
+    if (capaQueSubiu !== nome) await writeFile(join(this.#pastaLivros, id, nome), bytes)
+    if (!this.banco.marcarCapaNaNuvem(id, capaQueSubiu, nome)) {
+      await this.#apagarCapaSemUso(id, nome)
+      return false
     }
+    if (capaQueSubiu !== nome) await this.#apagarCapaSemUso(id, capaQueSubiu)
+    return true
   }
 
-  /** Uma capa que veio da nuvem: só entra se a imagem for a que o nome diz. */
+  /**
+   * Uma capa que veio da nuvem: só entra se a imagem for a que o nome diz e se ainda for mais nova que
+   * a daqui (uma capa escolhida aqui durante o download fica).
+   */
   async guardarCapaDaNuvem(id: string, nome: string, bytes: Uint8Array, capaEm: string | null): Promise<boolean> {
     const livro = ID_VALIDO.test(id) ? this.banco.obterLivro(id) : null
     if (!livro || nomeDaCapaNaNuvem(bytes) !== nome) return false
     const pasta = join(this.#pastaLivros, id)
     await mkdir(pasta, { recursive: true })
     await writeFile(join(pasta, nome), bytes)
-    this.banco.guardarCapaDaNuvem(id, nome, capaEm)
-    if (livro.capa && livro.capa !== nome && ARQUIVO_DE_CAPA.test(livro.capa)) {
-      await rm(join(pasta, livro.capa), { force: true }).catch(() => {})
+    const anterior = this.banco.obterLivro(id)?.capa ?? null
+    if (!this.banco.guardarCapaDaNuvem(id, nome, capaEm)) {
+      await this.#apagarCapaSemUso(id, nome)
+      return false
     }
+    if (anterior && anterior !== nome) await this.#apagarCapaSemUso(id, anterior)
     return true
   }
 
-  /** Um livro de outro aparelho: a pasta (para a capa) e o livro no banco, com o arquivo ainda na nuvem. */
+  /** Apaga o arquivo de uma capa da pasta do livro, se ela não é (ou não voltou a ser) a capa dele. */
+  async #apagarCapaSemUso(id: string, nome: string) {
+    if (!ARQUIVO_DE_CAPA.test(nome) || this.banco.obterLivro(id)?.capa === nome) return
+    await rm(join(this.#pastaLivros, id, nome), { force: true }).catch(() => {})
+  }
+
+  /** Um livro de outro aparelho: o livro no banco, com o arquivo ainda na nuvem, e a pasta (para a capa). */
   async criarDaNuvem(livro: LivroNaNuvem): Promise<Livro> {
     const id = randomUUID()
+    // Primeiro o banco: saindo da conta no meio, o livro sai junto com os outros que vieram da nuvem.
+    const novo = this.banco.inserirDaNuvem(id, livro)
     await mkdir(join(this.#pastaLivros, id), { recursive: true })
-    return this.banco.inserirDaNuvem(id, livro)
+    return novo
   }
 
   /**
@@ -380,7 +401,7 @@ export class Biblioteca {
       await writeFile(join(pastaDoLivro, arquivo.nome), arquivo.bytes)
     }
     this.banco.completarDaNuvem(id, { arquivoOriginal: preparado.arquivoOriginal, arquivoLeitura: preparado.arquivoLeitura })
-    if (usarCapa) this.banco.atualizarLivro(id, { capa: preparado.capa })
+    if (usarCapa) this.banco.atualizarLivro(id, { capa: preparado.capa }, { hora: HORA_FRACA })
     return { livro: this.banco.obterLivro(id)! }
   }
 

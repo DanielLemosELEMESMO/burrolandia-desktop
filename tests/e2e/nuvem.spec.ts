@@ -2,64 +2,11 @@
 // nuvem de mentira com as regras do banco de verdade (nuvem-falsa.ts).
 
 import { join } from 'node:path'
-import { expect, test, type Locator, type Page } from '@playwright/test'
-import type { ApiBurrolandia } from '../../src/preload/api'
+import { expect, test } from '@playwright/test'
 import { gravarLivrosDeTeste } from '../fixtures/livros'
-import { abrirApp, escolherArquivo, irPara, novaPastaDeDados, posicaoParada } from './app'
+import { abrirApp, escolherArquivo, irPara, novaPastaDeDados } from './app'
+import { entrar, esperarSincronizar, posicaoSalva, sairDoLeitor, SENHA, sincronizarAgora, virar } from './conta'
 import { abrirNuvemFalsa } from './nuvem-falsa'
-
-const EMAIL = 'ana@burrolandia.test'
-const SENHA = 'senha-de-teste-123'
-
-/** Entra (ou cria a conta) pelo botão do alto da tela e espera a primeira sincronização. */
-async function entrar(janela: Page, { criar = false, senha = SENHA } = {}) {
-  await janela.getByRole('banner').getByRole('button', { name: 'Entrar', exact: true }).click()
-  const dialogo = janela.getByRole('dialog', { name: 'Sua conta' })
-  if (criar) await dialogo.getByRole('radio', { name: 'Criar conta' }).check()
-  await dialogo.getByLabel('E-mail').fill(EMAIL)
-  await dialogo.getByLabel('Senha').fill(senha)
-  await dialogo.getByRole('button', { name: criar ? 'Criar conta' : 'Entrar' }).click()
-  return dialogo
-}
-
-async function esperarSincronizar(janela: Page) {
-  const dialogo = janela.getByRole('dialog', { name: 'Sua conta' })
-  await expect(dialogo.getByText(EMAIL)).toBeVisible()
-  await expect(dialogo.getByRole('status')).toHaveText(/Tudo sincronizado/, { timeout: 30_000 })
-}
-
-/** Abre "Sua conta", pede para sincronizar agora e espera terminar. */
-async function sincronizarAgora(janela: Page) {
-  await janela.getByRole('button', { name: /^Sua conta/ }).click()
-  const dialogo = janela.getByRole('dialog', { name: 'Sua conta' })
-  await dialogo.getByRole('button', { name: 'Sincronizar agora' }).click()
-  await esperarSincronizar(janela)
-  await janela.keyboard.press('Escape')
-}
-
-/** A posição salva no banco do aparelho (a que sobe para a nuvem). */
-const posicaoSalva = (janela: Page) =>
-  janela.evaluate(async () => {
-    const { burrolandia } = globalThis as unknown as { burrolandia: ApiBurrolandia }
-    const [livro] = await burrolandia.biblioteca.listar()
-    return livro.posicao?.locations.cfi
-  })
-
-/** Vira uma página (para frente ou para trás) e espera a posição nova parar de mudar. */
-async function virar(janela: Page, leitor: Locator, tecla: 'ArrowRight' | 'ArrowLeft') {
-  const antes = await posicaoParada(janela, leitor)
-  await janela.keyboard.press(tecla)
-  await expect(leitor).not.toHaveAttribute('data-cfi', antes!)
-  return (await posicaoParada(janela, leitor))!
-}
-
-/** Sai do leitor pelo dock (as faixas somem enquanto você lê; o mouse traz de volta). */
-async function sairDoLeitor(janela: Page) {
-  await janela.mouse.move(400, 300)
-  await janela.mouse.move(420, 320)
-  await irPara(janela, 'Início')
-  await expect(janela.getByRole('main', { name: 'Início' })).toBeVisible()
-}
 
 test('dois aparelhos: o livro e a página onde você parou vão de um para o outro, e voltam', async () => {
   const nuvem = await abrirNuvemFalsa()
@@ -150,7 +97,13 @@ test('remover num aparelho tira do outro; sair da conta tira os livros que só e
 
   // B sai da conta: o livro que só estava na nuvem sai de B; em A, nada muda.
   await b.janela.getByRole('button', { name: /^Sua conta/ }).click()
-  await b.janela.getByRole('dialog', { name: 'Sua conta' }).getByRole('button', { name: 'Sair da conta' }).click()
+  const contaB = b.janela.getByRole('dialog', { name: 'Sua conta' })
+  await contaB.getByRole('button', { name: 'Sair da conta' }).click()
+  // Antes de sair, a pergunta: o foco fica no "Cancelar", e o que sai deste computador está dito.
+  const pergunta = contaB.getByRole('group', { name: 'Sair da conta neste computador?' })
+  await expect(pergunta.getByRole('button', { name: 'Cancelar' })).toBeFocused()
+  await expect(pergunta).toContainText('Os livros que vieram da nuvem saem deste computador')
+  await pergunta.getByRole('button', { name: 'Sair', exact: true }).click()
   await expect(b.janela.getByRole('banner').getByRole('button', { name: 'Entrar', exact: true })).toBeVisible()
   await b.janela.keyboard.press('Escape')
   await expect(b.janela.getByText('Sua biblioteca está vazia')).toBeVisible()

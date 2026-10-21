@@ -1,7 +1,7 @@
 // A sincronização entre aparelhos: cada aparelho com o seu banco e a sua pasta, todos na mesma nuvem
 // de mentira (com as regras do banco do Supabase).
 
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -9,13 +9,32 @@ import type { Locator, Obra } from '@nucleo/tipos'
 import { Banco } from '../../src/main/banco'
 import { Biblioteca, nomeDaCapa } from '../../src/main/biblioteca'
 import { Nuvem, type OpcoesDaNuvem } from '../../src/main/nuvem'
+import { SemConexaoComANuvem } from '@nucleo/nuvem/remoto'
 import { NuvemEmMemoria, type RemotoEmMemoria } from '../fakes/nuvem-em-memoria'
-import { gravarLivrosDeTeste } from '../fixtures/livros'
+import { epubOrigemDasEspecies, gravarLivrosDeTeste } from '../fixtures/livros'
 
 const SENHA = 'senha-de-teste-123'
 const EMAIL = 'ana@burrolandia.test'
 const VERMELHA = new Uint8Array(readFileSync(join(__dirname, '../fixtures/capa-vermelha.jpg')))
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8])
+const OBRA: Obra = {
+  id: 'OL1003040W',
+  titulo: 'Dom Casmurro',
+  autores: ['Machado de Assis'],
+  primeiroAno: 1899,
+  edicoes: 80,
+  capaId: 647501,
+  assuntos: ['Romance'],
+  descricao: 'Bentinho e Capitu.',
+}
 const dormir = (ms: number) => new Promise(pronto => setTimeout(pronto, ms))
+
+/** Uma porta: quem espera por `aberto` só passa depois de `abrir()`. */
+function portao() {
+  let abrir!: () => void
+  const aberto = new Promise<void>(pronto => (abrir = pronto))
+  return { aberto, abrir }
+}
 
 const posicao = (cfi: string, total: number): Locator => ({
   href: 'texto.xhtml',
@@ -68,6 +87,15 @@ describe('Nuvem: a sincronização entre aparelhos', () => {
   }
 
   const livrosDaConta = async (a: Aparelho) => nuvem.livrosDe((await a.remoto.conta())!.id)
+  const livrosDaContaPorEmail = async (email: string) => nuvem.livrosDe(nuvem.contas.get(email)!.conta.id)
+
+  /** Os livros de teste, mais A Origem das Espécies (um terceiro, sem capa). */
+  function tresLivros(pasta: string) {
+    const livros = gravarLivrosDeTeste(join(pasta, 'origem'))
+    const origem = join(pasta, 'origem', 'origem-das-especies.epub')
+    writeFileSync(origem, epubOrigemDasEspecies())
+    return { ...livros, origem }
+  }
 
   beforeEach(() => {
     nuvem = new NuvemEmMemoria()
@@ -170,6 +198,32 @@ describe('Nuvem: a sincronização entre aparelhos', () => {
     expect(a.nuvem.estado().pendentes + b.nuvem.estado().pendentes).toBe(0)
   })
 
+  it('a posição mais nova que chega avisa (o leitor aberto vai para ela); a mais velha, não', async () => {
+    const a = aparelho()
+    const b = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const livroA = await importar(a, livros.domCasmurro)
+    a.banco.salvarPosicao(livroA.id, posicao('/6/4', 0.2))
+    await entrar(a, { criar: true })
+    await entrar(b)
+    const chegaram: [string, string | undefined][] = []
+    b.nuvem.quandoChegarPosicao((id, p) => chegaram.push([id, p.locations.cfi]))
+    const [livroB] = b.banco.listarLivros()
+
+    a.banco.salvarPosicao(livroA.id, posicao('/6/12', 0.5))
+    await a.nuvem.sincronizar()
+    await b.nuvem.sincronizar()
+    expect(chegaram).toEqual([[livroB.id, '/6/12']])
+
+    // B leu depois: a posição de A que voltar (mais velha) não muda nada em B.
+    b.banco.salvarPosicao(livroB.id, posicao('/6/20', 0.7))
+    await b.nuvem.sincronizar()
+    await a.nuvem.sincronizar()
+    await b.nuvem.sincronizar()
+    expect(chegaram).toHaveLength(1)
+    expect(a.banco.obterLivro(livroA.id)!.posicao?.locations.cfi).toBe('/6/20')
+  })
+
   it('a obra reconhecida num aparelho chega ao outro, com a descrição', async () => {
     const a = aparelho()
     const b = aparelho()
@@ -242,6 +296,158 @@ describe('Nuvem: a sincronização entre aparelhos', () => {
     expect(a.banco.listarLivros()).toMatchObject([{ titulo: 'Dom Casmurro', estado: 'na-nuvem' }])
   })
 
+  it('outro aparelho com o mesmo arquivo, importado depois, não passa por cima da obra e da capa que você escolheu', async () => {
+    const a = aparelho()
+    const b = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const livroA = await importar(a, livros.domCasmurro)
+    a.banco.salvarObra(OBRA)
+    a.banco.ligarAoCatalogo(livroA.id, { obraId: OBRA.id, edicaoId: null, reconhecimento: 'escolhido' })
+    await a.biblioteca.salvarCapa(livroA.id, VERMELHA, { escolhida: true })
+    await entrar(a, { criar: true })
+    await dormir(5)
+    // B importa o mesmo arquivo depois (o título e a capa vêm do arquivo; o catálogo não achou nada).
+    const copia = join(b.pasta, 'dom.epub')
+    copyFileSync(livros.domCasmurro, copia)
+    const livroB = await importar(b, copia)
+    b.banco.ligarAoCatalogo(livroB.id, { obraId: null, edicaoId: null, reconhecimento: 'sem-resultado' })
+    await entrar(b)
+    await a.nuvem.sincronizar()
+
+    const escolhido = { obraId: OBRA.id, reconhecimento: 'escolhido', capa: nomeDaCapa(VERMELHA) }
+    expect((await livrosDaConta(a))[0]).toMatchObject(escolhido)
+    expect(a.banco.obterLivro(livroA.id)).toMatchObject(escolhido)
+    expect(b.banco.obterLivro(livroB.id)).toMatchObject(escolhido)
+    expect(existsSync(join(a.pasta, 'dados', 'livros', livroA.id, nomeDaCapa(VERMELHA)!))).toBe(true)
+  })
+
+  it('o reconhecimento automático passa por cima do que veio no arquivo, mas não da sua escolha', async () => {
+    const a = aparelho()
+    const b = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const livroA = await importar(a, livros.domCasmurro)
+    await entrar(a, { criar: true })
+    await entrar(b)
+    const [livroB] = b.banco.listarLivros()
+    // Em B, você diz que não é nenhuma destas; depois, A reconhece sozinho pelo título.
+    b.banco.ligarAoCatalogo(livroB.id, { obraId: null, edicaoId: null, reconhecimento: 'recusado' })
+    await b.nuvem.sincronizar()
+    a.banco.salvarObra(OBRA)
+    a.banco.ligarAoCatalogo(livroA.id, { obraId: OBRA.id, edicaoId: null, reconhecimento: 'titulo' })
+    await a.nuvem.sincronizar()
+    await b.nuvem.sincronizar()
+    expect((await livrosDaConta(a))[0]).toMatchObject({ obraId: null, reconhecimento: 'recusado' })
+    expect(a.banco.obterLivro(livroA.id)).toMatchObject({ obraId: null, reconhecimento: 'recusado' })
+  })
+
+  it('trocar a capa enquanto a anterior sobe: a nova fica, aqui e depois na nuvem', async () => {
+    const a = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const livro = await importar(a, livros.domCasmurro)
+    await entrar(a, { criar: true })
+    const porta = portao()
+    const enviar = a.remoto.enviar.bind(a.remoto)
+    a.remoto.enviar = async (bucket, caminho, bytes, tipo) => {
+      if (bucket === 'capas') await porta.aberto
+      return enviar(bucket, caminho, bytes, tipo)
+    }
+    await a.biblioteca.salvarCapa(livro.id, VERMELHA, { escolhida: true })
+    const ciclo = a.nuvem.sincronizar()
+    await dormir(30)
+    await a.biblioteca.salvarCapa(livro.id, PNG, { escolhida: true })
+    porta.abrir()
+    await ciclo
+    await a.nuvem.sincronizar()
+
+    const png = nomeDaCapa(PNG)!
+    expect(a.banco.obterLivro(livro.id)!.capa).toBe(png)
+    expect(existsSync(join(a.pasta, 'dados', 'livros', livro.id, png))).toBe(true)
+    expect((await livrosDaConta(a))[0].capa).toBe(png)
+    expect([...nuvem.arquivos.keys()].filter(chave => chave.startsWith('capas/'))).toEqual([
+      expect.stringMatching(new RegExp(`/${png.replace('.', '\\.')}$`)),
+    ])
+  })
+
+  it('escolher a capa enquanto a de outro aparelho desce: a escolhida por último vale nos dois', async () => {
+    const a = aparelho()
+    const b = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const livroA = await importar(a, livros.domCasmurro)
+    await entrar(a, { criar: true })
+    await entrar(b)
+    const [livroB] = b.banco.listarLivros()
+    await a.biblioteca.salvarCapa(livroA.id, VERMELHA, { escolhida: true })
+    await a.nuvem.sincronizar()
+
+    const porta = portao()
+    const baixar = b.remoto.baixar.bind(b.remoto)
+    b.remoto.baixar = async (bucket, caminho) => {
+      const bytes = await baixar(bucket, caminho)
+      if (bucket === 'capas') await porta.aberto
+      return bytes
+    }
+    const ciclo = b.nuvem.sincronizar()
+    await dormir(30)
+    await b.biblioteca.salvarCapa(livroB.id, PNG, { escolhida: true })
+    porta.abrir()
+    await ciclo
+    await b.nuvem.sincronizar()
+    await a.nuvem.sincronizar()
+
+    const png = nomeDaCapa(PNG)!
+    expect(b.banco.obterLivro(livroB.id)!.capa).toBe(png)
+    expect(existsSync(join(b.pasta, 'dados', 'livros', livroB.id, png))).toBe(true)
+    expect(a.banco.obterLivro(livroA.id)!.capa).toBe(png)
+  })
+
+  it('se apagar da nuvem falhar, a lápide fica e a capa e o arquivo saem na próxima vez', async () => {
+    const a = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const livro = await importar(a, livros.domCasmurro)
+    await entrar(a, { criar: true })
+    expect(nuvem.arquivos.size).toBe(2)
+    await a.biblioteca.remover(livro.id)
+    const apagar = a.remoto.apagar.bind(a.remoto)
+    let semConexao = true
+    a.remoto.apagar = async (bucket, caminhos) => {
+      if (semConexao) throw new SemConexaoComANuvem()
+      return apagar(bucket, caminhos)
+    }
+    await a.nuvem.sincronizar()
+    expect(a.banco.lapides()).toHaveLength(1)
+    expect(nuvem.arquivos.size).toBe(2)
+    semConexao = false
+    await a.nuvem.sincronizar()
+    expect(a.banco.lapides()).toEqual([])
+    expect(nuvem.arquivos.size).toBe(0)
+  })
+
+  it('um livro que a nuvem recusa continua pendente, sem travar os outros, e sobe quando mudar', async () => {
+    const a = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const bom = await importar(a, livros.domCasmurro)
+    const ruim = await importar(a, livros.memorias)
+    await entrar(a, { criar: true })
+    const guardar = a.remoto.guardar.bind(a.remoto)
+    a.remoto.guardar = async lista => {
+      if (lista.some(l => l.hash === ruim.hashSha256)) throw new Error('A nuvem recusou (23514)')
+      return guardar(lista)
+    }
+    a.banco.salvarPosicao(bom.id, posicao('/6/4', 0.3))
+    a.banco.salvarPosicao(ruim.id, posicao('/6/6', 0.4))
+    await a.nuvem.sincronizar()
+    expect(a.nuvem.estado().pendentes).toBe(1)
+    expect((await livrosDaConta(a)).find(l => l.hash === bom.hashSha256)!.posicao?.locations.cfi).toBe('/6/4')
+
+    a.remoto.guardar = guardar
+    await a.nuvem.sincronizar()
+    expect(a.nuvem.estado().pendentes).toBe(1)
+    a.banco.salvarPosicao(ruim.id, posicao('/6/8', 0.5))
+    await a.nuvem.sincronizar()
+    expect(a.nuvem.estado().pendentes).toBe(0)
+    expect((await livrosDaConta(a)).find(l => l.hash === ruim.hashSha256)!.posicao?.locations.cfi).toBe('/6/8')
+  })
+
   it('trocar a capa num aparelho troca no outro; a capa antiga sai da nuvem', async () => {
     const a = aparelho()
     const b = aparelho()
@@ -250,7 +456,8 @@ describe('Nuvem: a sincronização entre aparelhos', () => {
     await entrar(a, { criar: true })
     await entrar(b)
 
-    await a.biblioteca.salvarCapa(livro.id, VERMELHA)
+    // Você troca a capa em A (a do arquivo, que já estava na nuvem, perde para a escolhida).
+    await a.biblioteca.salvarCapa(livro.id, VERMELHA, { escolhida: true })
     await a.nuvem.sincronizar()
     const nome = nomeDaCapa(VERMELHA)!
     expect(await a.remoto.listar('capas', livro.hashSha256)).toEqual([nome])
@@ -290,22 +497,103 @@ describe('Nuvem: a sincronização entre aparelhos', () => {
     expect((await livrosDaConta(a))[0].posicao?.locations.cfi).toBe('/6/14')
   })
 
-  it('sair da conta: os livros que só estavam na nuvem saem, os deste aparelho ficam', async () => {
+  it('sair da conta: os livros que vieram da nuvem saem (baixados ou não), os adicionados aqui ficam', async () => {
     const a = aparelho()
     const b = aparelho()
-    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const livros = tresLivros(a.pasta)
     await importar(a, livros.domCasmurro)
+    await importar(a, livros.origem)
     await entrar(a, { criar: true })
     const deB = join(b.pasta, 'memorias.epub')
     copyFileSync(livros.memorias, deB)
     await importar(b, deB)
     await entrar(b)
-    expect(b.banco.listarLivros()).toHaveLength(2)
+    expect(b.banco.listarLivros()).toHaveLength(3)
+    const baixado = b.banco.listarLivros().find(l => l.titulo === 'Dom Casmurro')!
+    expect(await b.nuvem.baixar(baixado.id)).toMatchObject({ ok: true })
 
     await b.nuvem.sair()
     expect(b.nuvem.estado()).toMatchObject({ conta: null, problema: null })
     expect(b.banco.listarLivros().map(l => l.titulo)).toEqual(['Memórias Póstumas de Brás Cubas'])
     expect(await b.remoto.conta()).toBeNull()
+  })
+
+  it('sair manda antes o que falta subir: um livro removido agora não volta ao entrar de novo', async () => {
+    const a = aparelho()
+    const livros = gravarLivrosDeTeste(join(a.pasta, 'origem'))
+    const livro = await importar(a, livros.domCasmurro)
+    await entrar(a, { criar: true })
+    await a.biblioteca.remover(livro.id)
+    await a.nuvem.sair()
+    expect((await livrosDaContaPorEmail(EMAIL))[0].removidoEm).toEqual(expect.any(String))
+    await entrar(a)
+    expect(a.banco.listarLivros()).toEqual([])
+  })
+
+  it('sair durante a primeira leitura da nuvem: nada da conta entra depois', async () => {
+    const a = aparelho()
+    const livros = tresLivros(a.pasta)
+    for (const livro of [livros.domCasmurro, livros.origem, livros.memorias]) await importar(a, livro)
+    await entrar(a, { criar: true })
+
+    const b = aparelho({ fimDoCiclo: 20 })
+    const capa = portao()
+    let esperando = 0
+    const baixar = b.remoto.baixar.bind(b.remoto)
+    b.remoto.baixar = async (bucket, caminho) => {
+      const bytes = await baixar(bucket, caminho)
+      if (bucket === 'capas') {
+        esperando++
+        await capa.aberto
+      }
+      return bytes
+    }
+    expect(await b.nuvem.entrar(EMAIL, SENHA)).toMatchObject({ ok: true })
+    await dormir(30)
+    // A leitura parou no meio, baixando a capa do primeiro livro.
+    expect(esperando).toBe(1)
+    await b.nuvem.sair()
+    capa.abrir()
+    await dormir(50)
+    expect(b.banco.listarLivros()).toEqual([])
+    expect(b.banco.lerPreferencia('nuvem:marcador')).toBeUndefined()
+  })
+
+  it('saindo e entrando com outra conta durante a leitura, chegam só os livros da conta nova', async () => {
+    const a = aparelho()
+    const livros = tresLivros(a.pasta)
+    await importar(a, livros.domCasmurro)
+    await importar(a, livros.origem)
+    await entrar(a, { criar: true })
+    const c = aparelho()
+    const deC = join(c.pasta, 'memorias.epub')
+    copyFileSync(livros.memorias, deC)
+    await importar(c, deC)
+    await entrar(c, { criar: true, email: 'carla@burrolandia.test' })
+    const carla = nuvem.contas.get('carla@burrolandia.test')!.conta.id
+    const daCarla = () => [...nuvem.arquivos.keys()].filter(chave => chave.includes(carla)).sort()
+    const arquivosDaCarla = daCarla()
+
+    const b = aparelho({ fimDoCiclo: 20 })
+    const capa = portao()
+    const baixar = b.remoto.baixar.bind(b.remoto)
+    let esperando = 0
+    b.remoto.baixar = async (bucket, caminho) => {
+      const bytes = await baixar(bucket, caminho)
+      if (bucket === 'capas' && ++esperando === 1) await capa.aberto
+      return bytes
+    }
+    await b.nuvem.entrar(EMAIL, SENHA)
+    await dormir(30)
+    expect(esperando).toBe(1)
+    await b.nuvem.sair()
+    expect(await b.nuvem.entrar('carla@burrolandia.test', SENHA)).toMatchObject({ ok: true })
+    capa.abrir()
+    await b.nuvem.sincronizar()
+    expect(b.banco.listarLivros().map(l => l.titulo)).toEqual(['Memórias Póstumas de Brás Cubas'])
+    expect(b.banco.lerPreferencia('nuvem:marcador')).toMatchObject({ conta: carla })
+    // Nada da conta de Carla foi apagado pelo ciclo da conta anterior.
+    expect(daCarla()).toEqual(arquivosDaCarla)
   })
 
   it('entrando com outra conta, o que era da conta anterior não vai junto', async () => {

@@ -27,6 +27,16 @@ export const PROJETO_DA_NUVEM = {
   chave: 'sb_publishable_eZSYbe3QTczHZ5uxaOzj2g_vUT2Xvvb',
 }
 
+/** Os tempos limite (nos testes, menores). */
+export interface TemposDaNuvem {
+  /** Quanto esperar um pedido comum. */
+  pedido?: number
+  /** Quanto esperar um arquivo subir ou descer. */
+  arquivo?: number
+  /** Saindo da conta sem conexão, quanto esperar a nuvem saber da saída. */
+  avisoDaSaida?: number
+}
+
 export interface ArmazenamentoDaSessao {
   getItem(chave: string): string | null | Promise<string | null>
   setItem(chave: string, valor: string): void | Promise<void>
@@ -34,6 +44,18 @@ export interface ArmazenamentoDaSessao {
 }
 
 const CHAVE_DA_SESSAO = 'burrolandia-sessao'
+
+/** Quanto esperar a nuvem: um pedido comum, e um arquivo (um livro de 50 MB numa rede lenta). */
+const TEMPO_DO_PEDIDO = 30_000
+const TEMPO_DO_ARQUIVO = 10 * 60_000
+/** Saindo da conta sem conexão, não espera a nuvem saber da saída mais que isso. */
+const TEMPO_PARA_AVISAR_A_SAIDA = 3_000
+
+const espera = (ms: number) => new Promise<void>(pronto => setTimeout(pronto, ms).unref?.())
+
+/** Subir ou baixar um arquivo do Storage (a lista de uma pasta é um pedido comum). */
+const levaArquivo = (endereco: string, metodo = 'GET') =>
+  /\/storage\/v1\/object\/(?!list\/)/.test(endereco) && ['GET', 'POST', 'PUT'].includes(metodo.toUpperCase())
 
 /** Uma linha da tabela livros, como o PostgREST devolve. */
 interface Linha {
@@ -146,13 +168,26 @@ export class RemotoSupabase implements Remoto {
   readonly #armazenamento: ArmazenamentoDaSessao
   #aoTerminar: (() => void) | null = null
   #saindo = false
+  /** Cancela os pedidos em andamento (cancelar() troca por um novo). */
+  #controle = new AbortController()
+  readonly #tempos: Required<TemposDaNuvem>
 
   constructor(
     projeto: { url: string; chave: string },
     armazenamento: ArmazenamentoDaSessao,
     buscar: typeof fetch = fetch,
+    tempos: TemposDaNuvem = {},
   ) {
     this.#armazenamento = armazenamento
+    this.#tempos = { pedido: TEMPO_DO_PEDIDO, arquivo: TEMPO_DO_ARQUIVO, avisoDaSaida: TEMPO_PARA_AVISAR_A_SAIDA, ...tempos }
+    // Todo pedido tem um tempo limite (uma rede parada não deixa "Sincronizando…" para sempre) e
+    // pode ser cancelado. Os dois viram "sem conexão".
+    const comLimites: typeof fetch = (url, init) => {
+      const endereco = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url
+      const limite = levaArquivo(endereco, init?.method) ? this.#tempos.arquivo : this.#tempos.pedido
+      const sinais = [this.#controle.signal, AbortSignal.timeout(limite), ...(init?.signal ? [init.signal] : [])]
+      return buscar(url, { ...init, signal: AbortSignal.any(sinais) })
+    }
     this.#cliente = createClient(projeto.url, projeto.chave, {
       auth: {
         storage: armazenamento,
@@ -161,7 +196,7 @@ export class RemotoSupabase implements Remoto {
         autoRefreshToken: true,
         detectSessionInUrl: false,
       },
-      global: { fetch: buscar },
+      global: { fetch: comLimites },
     })
     this.#cliente.auth.onAuthStateChange(evento => {
       // A renovação foi recusada (sessão encerrada em outro lugar): o app mostra "entre de novo".
@@ -171,9 +206,16 @@ export class RemotoSupabase implements Remoto {
 
   /** Lê a conta direto da sessão guardada: funciona sem conexão. */
   async conta(): Promise<Conta | null> {
+    return contaDe((await this.#sessaoGuardada())?.user)
+  }
+
+  /** A sessão como o supabase-js guarda (sem conexão, sem renovar). */
+  async #sessaoGuardada() {
     try {
       const guardada = await this.#armazenamento.getItem(CHAVE_DA_SESSAO)
-      return guardada ? contaDe((JSON.parse(guardada) as { user?: { id: string; email?: string } }).user) : null
+      return guardada
+        ? (JSON.parse(guardada) as { access_token?: string; expires_at?: number; user?: { id: string; email?: string } })
+        : null
     } catch {
       return null
     }
@@ -201,16 +243,33 @@ export class RemotoSupabase implements Remoto {
   async sair() {
     this.#saindo = true
     try {
-      // Só esta sessão: os outros aparelhos continuam dentro.
-      const { error } = await this.#cliente.auth.signOut({ scope: 'local' })
-      if (error) console.warn('Não deu para avisar a nuvem da saída; a sessão daqui foi esquecida', error.message)
+      // Só esta sessão: os outros aparelhos continuam dentro. A nuvem fica sabendo direto pelo token,
+      // sem renovar a sessão nem deixar nada andando depois: com o token vencido (sem conexão, não
+      // renova), ou sem resposta logo, a saída não espera.
+      const sessao = await this.#sessaoGuardada()
+      if (sessao?.access_token && (sessao.expires_at ?? 0) * 1000 > Date.now() + 10_000) {
+        const avisar = this.#cliente.auth.admin
+          .signOut(sessao.access_token, 'local')
+          .then(({ error }) => error && console.warn('Não deu para avisar a nuvem da saída', error.message))
+          .catch(erro => console.warn('Não deu para avisar a nuvem da saída', erro))
+        const avisou = await Promise.race([avisar.then(() => true), espera(this.#tempos.avisoDaSaida).then(() => false)])
+        if (!avisou) this.cancelar()
+      }
     } finally {
+      // A sessão daqui é esquecida mesmo sem resposta da nuvem: senão, o app entraria sozinho na conta
+      // na próxima abertura.
+      await this.#armazenamento.removeItem(CHAVE_DA_SESSAO)
       this.#saindo = false
     }
   }
 
   aoTerminarSessao(quando: () => void) {
     this.#aoTerminar = quando
+  }
+
+  cancelar() {
+    this.#controle.abort()
+    this.#controle = new AbortController()
   }
 
   /** A sessão vale? Renova se precisar. Sem conexão: SemConexao; recusada: SessaoTerminada. */
@@ -251,8 +310,14 @@ export class RemotoSupabase implements Remoto {
   }
 
   async uso(): Promise<UsoDaNuvem> {
-    const uso = await this.#rpc<UsoDaNuvem>('uso_da_nuvem', {})
-    return { livros: Number(uso.livros), arquivos: Number(uso.arquivos), bytes: Number(uso.bytes) }
+    const uso = await this.#rpc<Partial<UsoDaNuvem>>('uso_da_nuvem', {})
+    return {
+      livros: Number(uso.livros ?? 0),
+      arquivos: Number(uso.arquivos ?? 0),
+      bytes: Number(uso.bytes ?? 0),
+      // Um banco sem o limite (antes da revisão) não limita.
+      limite: uso.limite === undefined ? Number.POSITIVE_INFINITY : Number(uso.limite),
+    }
   }
 
   /** Erros do Storage: rede fora, sessão recusada, arquivo que não existe. */

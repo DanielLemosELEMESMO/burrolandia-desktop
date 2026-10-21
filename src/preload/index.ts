@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AndamentoDoDownload, AndamentoImportacao, EstadoDaNuvem } from '../nucleo/tipos'
+import type { AndamentoDoDownload, AndamentoImportacao, EstadoDaNuvem, Locator } from '../nucleo/tipos'
 import type { ApiBurrolandia } from './api'
 
 const api: ApiBurrolandia = {
@@ -8,7 +8,7 @@ const api: ApiBurrolandia = {
     adicionar: () => ipcRenderer.invoke('biblioteca:adicionar'),
     importar: caminho => ipcRenderer.invoke('biblioteca:importar', caminho),
     remover: id => ipcRenderer.invoke('biblioteca:remover', id),
-    salvarCapa: (id, imagem) => ipcRenderer.invoke('biblioteca:salvar-capa', id, imagem),
+    salvarCapa: (id, imagem, { escolhida = false } = {}) => ipcRenderer.invoke('biblioteca:salvar-capa', id, imagem, escolhida),
     imagens: id => ipcRenderer.invoke('biblioteca:imagens', id),
     caminhoDoArquivo: arquivo => webUtils.getPathForFile(arquivo),
     aoAndamento: quando => {
@@ -23,6 +23,11 @@ const api: ApiBurrolandia = {
     salvarPosicao: (id, posicao) => ipcRenderer.invoke('leitura:salvar-posicao', id, posicao),
     salvarPosicaoAgora: (id, posicao) => {
       ipcRenderer.sendSync('leitura:salvar-posicao-agora', id, posicao)
+    },
+    aoChegarPosicao: quando => {
+      const ouvinte = (_: unknown, id: string, posicao: Locator) => quando(id, posicao)
+      ipcRenderer.on('leitura:posicao-de-outro-aparelho', ouvinte)
+      return () => ipcRenderer.off('leitura:posicao-de-outro-aparelho', ouvinte)
     },
   },
   preferencias: {

@@ -8,6 +8,8 @@ export interface ControleDaPaginaOriginal {
   proxima(): void
   anterior(): void
   zoom(passo: number): void
+  /** Vai para a página sem contar como mudança sua (a posição que chegou de outro aparelho). */
+  irPara(numero: number): void
 }
 
 const ZOOM_MINIMO = 0.5
@@ -29,7 +31,8 @@ export function PaginaOriginal({
   /** Página do PDF (1, 2, 3…) onde abrir. */
   paginaInicial: number
   controle: Ref<ControleDaPaginaOriginal>
-  aoMudarPagina: (numero: number, rotulo: string, total: number) => void
+  /** pelaPessoa: você mudou de página (abrir o livro na página salva não conta). */
+  aoMudarPagina: (numero: number, rotulo: string, total: number, pelaPessoa: boolean) => void
   aoFalhar: () => void
 }) {
   const rolagem = useRef<HTMLDivElement>(null)
@@ -138,16 +141,16 @@ export function PaginaOriginal({
 
   const vagas = () => Array.from(rolagem.current?.querySelectorAll<HTMLElement>('.pagina-vaga') ?? [])
 
-  const avisar = (numero: number) => {
+  const avisar = (numero: number, pelaPessoa = true) => {
     atual.current = numero
-    aoMudar.current(numero, rotulos[numero - 1] ?? String(numero), total)
+    aoMudar.current(numero, rotulos[numero - 1] ?? String(numero), total, pelaPessoa)
   }
 
-  const irPara = (numero: number, suave = true) => {
+  const irPara = (numero: number, suave = true, pelaPessoa = true) => {
     const vaga = vagas()[numero - 1]
     if (!vaga || !rolagem.current) return
     rolagemPorComando.current = true
-    if (numero !== atual.current) avisar(numero)
+    if (numero !== atual.current) avisar(numero, pelaPessoa)
     const reduzido = matchMedia('(prefers-reduced-motion: reduce)').matches
     // Deixa a folga no alto, para o topo da página aparecer logo abaixo da faixa de cima.
     rolagem.current.scrollTo({ top: vaga.offsetTop - TOPO_VISIVEL, behavior: suave && !reduzido ? 'smooth' : 'auto' })
@@ -189,7 +192,7 @@ export function PaginaOriginal({
     for (const evento of ['wheel', 'pointerdown', 'touchstart', 'keydown'] as const) {
       elemento.addEventListener(evento, pelaPessoa, { passive: true })
     }
-    aoMudar.current(atual.current, rotulos[atual.current - 1] ?? String(atual.current), total)
+    aoMudar.current(atual.current, rotulos[atual.current - 1] ?? String(atual.current), total, false)
     return () => {
       elemento.removeEventListener('scroll', aoRolar)
       for (const evento of ['wheel', 'pointerdown', 'touchstart', 'keydown'] as const) {
@@ -202,6 +205,12 @@ export function PaginaOriginal({
   useImperativeHandle(controle, () => ({
     proxima: () => irPara(Math.min(total, atual.current + 1)),
     anterior: () => irPara(Math.max(1, atual.current - 1)),
+    irPara: numero => {
+      const destino = Math.min(Math.max(1, numero), total || numero)
+      // Antes de as páginas existirem, a página atual já fica certa para quando abrirem.
+      if (!vagas().length) atual.current = destino
+      else irPara(destino, true, false)
+    },
     zoom: passo => setZoom(z => Math.min(ZOOM_MAXIMO, Math.max(ZOOM_MINIMO, Math.round((z + passo * 0.15) * 100) / 100))),
   }))
 

@@ -334,7 +334,7 @@ export class View extends HTMLElement {
         this.lastLocation = { ...progress, tocItem, pageItem, cfi, range }
         if (reason === 'snap' || reason === 'page' || reason === 'scroll')
             this.history.replaceState(cfi)
-        this.#emit('relocate', this.lastLocation)
+        this.#emit('relocate', { ...this.lastLocation, reason })
     }
     #onLoad({ doc, index }) {
         // set language and dir if not already set

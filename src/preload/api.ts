@@ -28,7 +28,8 @@ export interface ApiBurrolandia {
     importar(caminho: string): Promise<ResultadoImportacao>
     remover(id: string): Promise<void>
     /** Guarda a capa gerada pela interface (primeira página de um PDF, um recorte, uma imagem sua). */
-    salvarCapa(id: string, imagem: Uint8Array): Promise<Livro | null>
+    /** escolhida: você trocou a capa; sem isso, é a gerada pelo app (perde para a sua, em qualquer aparelho). */
+    salvarCapa(id: string, imagem: Uint8Array, opcoes?: { escolhida?: boolean }): Promise<Livro | null>
     /** As imagens de dentro do livro que podem virar capa (EPUB; o PDF a interface desenha). */
     imagens(id: string): Promise<ImagemDoLivro[]>
     /** Caminho no disco de um arquivo arrastado para a janela. */
@@ -41,6 +42,8 @@ export interface ApiBurrolandia {
     salvarPosicao(id: string, posicao: Locator): Promise<void>
     /** Salva na hora, sem esperar: para quando a janela está fechando. */
     salvarPosicaoAgora(id: string, posicao: Locator): void
+    /** Avisa quando chega de outro aparelho uma posição mais nova de um livro. */
+    aoChegarPosicao(quando: (id: string, posicao: Locator) => void): () => void
   }
   preferencias: {
     ler(): Promise<Preferencias>

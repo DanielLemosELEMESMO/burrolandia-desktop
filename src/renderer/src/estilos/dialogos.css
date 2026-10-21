@@ -940,8 +940,34 @@
   overflow-wrap: anywhere;
 }
 
+.conta-email:focus {
+  outline: none;
+}
+
+.conta-email:focus-visible {
+  outline: 2px solid var(--foco);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
 .conta-situacao {
   color: var(--suave);
+}
+
+.conta-confirmar {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--linha-forte);
+  border-radius: var(--raio-pequeno);
+}
+
+.conta-pergunta {
+  font-weight: 600;
+}
+
+.campo input[aria-invalid='true'] {
+  border-color: var(--perigo);
 }
 
 .conta-form .botoes,

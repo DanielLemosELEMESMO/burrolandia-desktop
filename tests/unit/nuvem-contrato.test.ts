@@ -161,6 +161,21 @@ function contrato(nome: string, ambiente: () => Ambiente) {
       expect(deNovo.titulo).toBe('Dom Casmurro (de novo)')
     })
 
+    test('um livro que volta como novo, ainda vivo, conta como adicionado agora: a remoção atrasada não o tira', async () => {
+      const hash = novoHash()
+      await remoto.guardar([livro(hash, { adicionadoEm: ha(120) })])
+      // Outro aparelho importa o mesmo arquivo (para ele, um livro novo na conta)…
+      const importadoEm = ha(2)
+      const deNovo = doLivro(await remoto.guardar([livro(hash, { adicionadoEm: importadoEm, novo: true })]), hash)
+      expect(mesmaHora(deNovo.adicionadoEm, importadoEm)).toBe(true)
+      // …e a remoção feita antes disso num terceiro, que só chegou agora, não o tira.
+      const ficou = doLivro(await remoto.remover([{ hash, removidoEm: ha(10) }]), hash)
+      expect(ficou.removidoEm).toBeNull()
+      // Quem já tinha o livro (não é novo para ele) não muda a hora em que ele foi adicionado.
+      const deQuemTinha = doLivro(await remoto.guardar([livro(hash, { adicionadoEm: ha(1), novo: false })]), hash)
+      expect(mesmaHora(deQuemTinha.adicionadoEm, importadoEm)).toBe(true)
+    })
+
     test('a lápide não remove um livro adicionado depois da hora da remoção', async () => {
       const hash = novoHash()
       await remoto.guardar([livro(hash, { adicionadoEm: ha(5) })])
@@ -210,6 +225,7 @@ function contrato(nome: string, ambiente: () => Ambiente) {
       const uso = await remoto.uso()
       expect(uso.livros).toBeGreaterThan(0)
       expect(uso.bytes).toBeGreaterThanOrEqual(0)
+      expect(uso.limite).toBeGreaterThan(uso.bytes)
     })
 
     test('outra conta não vê nem mexe nos seus livros e arquivos', async () => {
@@ -386,6 +402,20 @@ if (AO_VIVO) {
 
       await remotoA.apagar('arquivos', [`${hash}.pdf`])
       for (const conta of [contaA, contaB]) await conta.cliente.auth.signOut({ scope: 'local' })
+    })
+
+    test('uma escrita direta na tabela também passa pelo limite das horas dos aparelhos', async () => {
+      const conta = await cru()
+      const daqui1Ano = new Date(Date.now() + 365 * 24 * 3600_000).toISOString()
+      const { data, error } = await conta.cliente
+        .from('livros')
+        .insert({ ...linhaMinima(novoHash()), posicao: posicao('/6/4', 0.2), posicao_em: daqui1Ano, metadados_em: daqui1Ano })
+        .select()
+        .single()
+      expect(error).toBeNull()
+      expect(Date.parse(data.posicao_em)).toBeLessThan(Date.now() + 6 * 60_000)
+      expect(Date.parse(data.metadados_em)).toBeLessThan(Date.now() + 6 * 60_000)
+      await conta.cliente.auth.signOut({ scope: 'local' })
     })
 
     test('caminhos fora do padrão do app e pastas de outras contas são recusados', async () => {

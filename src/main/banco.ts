@@ -5,7 +5,7 @@
 
 import { DatabaseSync } from 'node:sqlite'
 import type { Decisao } from '@nucleo/nuvem/aparelho'
-import type { Lapide, LivroNaNuvem } from '@nucleo/nuvem/regras'
+import { HORA_FRACA, horaDoReconhecimento, type Lapide, type LivroNaNuvem } from '@nucleo/nuvem/regras'
 import type { Edicao, Identificadores, Livro, Locator, Obra, Reconhecimento } from '@nucleo/tipos'
 
 /** Um livro recém-importado: sem posição, sem progresso e ainda não procurado no catálogo. */
@@ -100,6 +100,18 @@ const MIGRACOES = [
     hash_sha256 TEXT PRIMARY KEY,
     removido_em TEXT NOT NULL
   );`,
+  // Revisão da parte 2: o livro que veio da nuvem sai ao sair da conta (baixado ou não); o que é
+  // automático (o que veio no arquivo, o reconhecimento sozinho, a capa gerada) ganha a hora fraca,
+  // para não passar por cima de uma escolha sua feita em outro aparelho. Nos livros que já subiram,
+  // nada muda. Num PDF, toda capa pode ter sido gerada: fica fraca também.
+  `ALTER TABLE livros ADD COLUMN veio_da_nuvem INTEGER NOT NULL DEFAULT 0;
+  UPDATE livros SET veio_da_nuvem = 1 WHERE estado = 'na-nuvem';
+  UPDATE livros SET metadados_em = CASE reconhecimento ${(['pendente', 'sem-resultado', 'titulo', 'isbn'] as const)
+    .map(r => `WHEN '${r}' THEN '${horaDoReconhecimento(r)}'`)
+    .join(' ')} END
+    WHERE versao_enviada = 0 AND reconhecimento NOT IN ('escolhido', 'recusado');
+  UPDATE livros SET capa_em = '${HORA_FRACA}'
+    WHERE versao_enviada = 0 AND capa IS NOT NULL AND (formato_original = 'pdf' OR capa NOT LIKE 'capa-%');`,
 ]
 
 const paraLivro = (l: Linha): Livro => ({
@@ -225,8 +237,9 @@ export class Banco {
         novo.estado,
         novo.adicionadoEm,
         agora,
-        agora,
-        novo.capa ? agora : null,
+        // O título e a capa que vieram no arquivo perdem para qualquer escolha sua.
+        HORA_FRACA,
+        novo.capa ? HORA_FRACA : null,
       )
     this.#aoMudar()
     return this.obterLivro(novo.id)!
@@ -257,22 +270,29 @@ export class Banco {
     this.#aoMudar()
   }
 
+  /** A posição nova, com a hora de agora. A mesma posição de novo não muda nada (nem a hora). */
   salvarPosicao(id: string, posicao: Locator) {
+    const json = JSON.stringify(posicao)
     const progresso = Math.min(1, Math.max(0, posicao.locations.totalProgression ?? 0))
     const agora = new Date().toISOString()
-    this.#db
-      .prepare('UPDATE livros SET posicao = ?, progresso = ?, posicao_em = ?, atualizado_em = ?, versao = versao + 1 WHERE id = ?')
-      .run(JSON.stringify(posicao), progresso, agora, agora, id)
-    this.#aoMudar()
+    const { changes } = this.#db
+      .prepare(
+        `UPDATE livros SET posicao = ?, progresso = ?, posicao_em = ?, atualizado_em = ?, versao = versao + 1
+         WHERE id = ? AND posicao IS NOT ?`,
+      )
+      .run(json, progresso, agora, agora, id, json)
+    if (Number(changes) > 0) this.#aoMudar()
   }
 
-  atualizarLivro(id: string, campos: Partial<Pick<Livro, 'capa' | 'titulo' | 'autores'>>) {
+  /** Muda o livro aqui. hora: a da mudança (HORA_FRACA para o que o app faz sozinho; senão, agora). */
+  atualizarLivro(id: string, campos: Partial<Pick<Livro, 'capa' | 'titulo' | 'autores'>>, { hora }: { hora?: string } = {}) {
     const agora = new Date().toISOString()
+    const daMudanca = hora ?? agora
     const colunas: string[] = []
     const valores: (string | null)[] = []
     if ('capa' in campos) {
       colunas.push('capa = ?', 'capa_em = ?')
-      valores.push(campos.capa ?? null, agora)
+      valores.push(campos.capa ?? null, daMudanca)
     }
     if (campos.titulo !== undefined) {
       colunas.push('titulo = ?')
@@ -284,7 +304,7 @@ export class Banco {
     }
     if (campos.titulo !== undefined || campos.autores !== undefined) {
       colunas.push('metadados_em = ?')
-      valores.push(agora)
+      valores.push(daMudanca)
     }
     if (!colunas.length) return
     this.#db
@@ -375,13 +395,13 @@ export class Banco {
     livroId: string,
     { obraId, edicaoId, reconhecimento }: { obraId: string | null; edicaoId: string | null; reconhecimento: Reconhecimento },
   ) {
-    const agora = new Date().toISOString()
+    const agora = new Date()
     this.#db
       .prepare(
         `UPDATE livros SET obra_id = ?, edicao_id = ?, reconhecimento = ?, metadados_em = ?, atualizado_em = ?,
           versao = versao + 1 WHERE id = ?`,
       )
-      .run(obraId, edicaoId, reconhecimento, agora, agora, livroId)
+      .run(obraId, edicaoId, reconhecimento, horaDoReconhecimento(reconhecimento, agora), agora.toISOString(), livroId)
     this.#aoMudar()
   }
 
@@ -425,11 +445,18 @@ export class Banco {
     return linha ? paraSincronizavel(linha) : null
   }
 
-  /** Os livros com mudanças que ainda não subiram, dos mais antigos aos mais novos. */
-  pendentesDeEnvio(limite: number): LivroSincronizavel[] {
+  /**
+   * Os livros com mudanças que ainda não subiram, dos mais antigos aos mais novos. Os recusados
+   * (id → versão que a nuvem recusou) ficam de fora até mudarem de novo.
+   */
+  pendentesDeEnvio(limite: number, recusados: ReadonlyMap<string, number> = new Map()): LivroSincronizavel[] {
     const linhas = this.#db
-      .prepare('SELECT * FROM livros WHERE versao > versao_enviada ORDER BY atualizado_em LIMIT ?')
-      .all(limite) as Linha[]
+      .prepare(
+        `SELECT * FROM livros WHERE versao > versao_enviada
+           AND NOT EXISTS (SELECT 1 FROM json_each(?) AS r WHERE r.value ->> '$[0]' = livros.id AND r.value ->> '$[1]' = livros.versao)
+         ORDER BY atualizado_em LIMIT ?`,
+      )
+      .all(JSON.stringify([...recusados]), limite) as Linha[]
     return linhas.map(paraSincronizavel)
   }
 
@@ -470,8 +497,8 @@ export class Banco {
         `INSERT INTO livros (id, titulo, autores, idioma, formato_original, arquivo_original, arquivo_leitura, capa,
           hash_sha256, tamanho_bytes, identificadores, estado, posicao, progresso, adicionado_em, aberto_em,
           atualizado_em, obra_id, edicao_id, reconhecimento, metadados_em, capa_em, posicao_em, versao,
-          versao_enviada, capa_na_nuvem, arquivo_na_nuvem)
-         VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, 'na-nuvem', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 1, 1, NULL, ?)`,
+          versao_enviada, capa_na_nuvem, arquivo_na_nuvem, veio_da_nuvem)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, 'na-nuvem', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 1, 1, NULL, ?, 1)`,
       )
       .run(
         id,
@@ -531,16 +558,29 @@ export class Banco {
     return Number(changes) > 0
   }
 
-  /** A capa que veio da nuvem já está na pasta do livro. */
-  guardarCapaDaNuvem(id: string, nome: string, capaEm: string | null) {
-    this.#db
-      .prepare('UPDATE livros SET capa = ?, capa_em = ?, capa_na_nuvem = ?, atualizado_em = ? WHERE id = ?')
-      .run(nome, capaEm, nome, new Date().toISOString(), id)
+  /**
+   * A capa que veio da nuvem já está na pasta do livro. Só entra se ainda for mais nova que a daqui
+   * (uma capa escolhida aqui durante o download vale). Devolve se entrou.
+   */
+  guardarCapaDaNuvem(id: string, nome: string, capaEm: string | null): boolean {
+    const { changes } = this.#db
+      .prepare(
+        `UPDATE livros SET capa = ?, capa_em = ?, capa_na_nuvem = ?, atualizado_em = ?
+         WHERE id = ? AND (capa_em IS NULL OR (? IS NOT NULL AND capa_em < ?))`,
+      )
+      .run(nome, capaEm, nome, new Date().toISOString(), id, capaEm, capaEm)
+    return Number(changes) > 0
   }
 
-  /** A capa daqui subiu com este nome (o arquivo local também passou a ter este nome). */
-  marcarCapaNaNuvem(id: string, nome: string) {
-    this.#db.prepare('UPDATE livros SET capa = ?, capa_na_nuvem = ? WHERE id = ?').run(nome, nome, id)
+  /**
+   * A capa daqui subiu com este nome (o arquivo local também passou a ter este nome). Só se a capa
+   * ainda for a que subiu: trocada no meio do envio, a nova fica. Devolve se marcou.
+   */
+  marcarCapaNaNuvem(id: string, capaQueSubiu: string, nome: string): boolean {
+    const { changes } = this.#db
+      .prepare('UPDATE livros SET capa = ?, capa_na_nuvem = ? WHERE id = ? AND capa = ?')
+      .run(nome, nome, id, capaQueSubiu)
+    return Number(changes) > 0
   }
 
   /** O arquivo subiu: a nuvem precisa saber (o livro volta para a fila de envio). */
@@ -574,13 +614,14 @@ export class Banco {
   }
 
   /**
-   * Saiu da conta: os livros que só existiam na nuvem saem (devolve os ids, para apagar as pastas),
-   * e os daqui voltam a ser "nunca enviados" (entrando de novo, sobem para a conta que entrar).
+   * Saiu da conta: os livros que vieram da nuvem saem, baixados ou não (devolve os ids, para apagar
+   * as pastas), e os adicionados aqui voltam a ser "nunca enviados" (entrando de novo, sobem para a
+   * conta que entrar).
    */
   esquecerNuvem(): string[] {
     return this.#emTransacao(() => {
-      const ids = (this.#db.prepare("SELECT id FROM livros WHERE estado = 'na-nuvem'").all() as { id: string }[]).map(l => l.id)
-      this.#db.prepare("DELETE FROM livros WHERE estado = 'na-nuvem'").run()
+      const ids = (this.#db.prepare('SELECT id FROM livros WHERE veio_da_nuvem = 1').all() as { id: string }[]).map(l => l.id)
+      this.#db.prepare('DELETE FROM livros WHERE veio_da_nuvem = 1').run()
       this.#db.prepare('UPDATE livros SET versao_enviada = 0, capa_na_nuvem = NULL, arquivo_na_nuvem = NULL').run()
       this.#db.prepare('DELETE FROM lapides').run()
       return ids

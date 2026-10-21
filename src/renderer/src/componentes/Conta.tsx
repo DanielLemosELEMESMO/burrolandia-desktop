@@ -63,7 +63,9 @@ function Entrar({ estado }: { estado: EstadoDaNuvem }) {
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const idDaDica = useId()
+  const idDoErro = useId()
   const campoDoEmail = useRef<HTMLInputElement>(null)
+  const descricaoDaSenha = [modo === 'criar' ? idDaDica : null, erro ? idDoErro : null].filter(Boolean).join(' ') || undefined
 
   useEffect(() => campoDoEmail.current?.focus(), [])
 
@@ -127,6 +129,8 @@ function Entrar({ estado }: { estado: EstadoDaNuvem }) {
           autoComplete="email"
           required
           maxLength={254}
+          aria-invalid={erro ? true : undefined}
+          aria-describedby={erro ? idDoErro : undefined}
           value={email}
           onChange={evento => setEmail(evento.target.value)}
         />
@@ -139,7 +143,8 @@ function Entrar({ estado }: { estado: EstadoDaNuvem }) {
           required
           minLength={modo === 'criar' ? 8 : undefined}
           maxLength={72}
-          aria-describedby={modo === 'criar' ? idDaDica : undefined}
+          aria-invalid={erro ? true : undefined}
+          aria-describedby={descricaoDaSenha}
           value={senha}
           onChange={evento => setSenha(evento.target.value)}
         />
@@ -150,7 +155,7 @@ function Entrar({ estado }: { estado: EstadoDaNuvem }) {
         </p>
       )}
       {erro && (
-        <p className="conta-erro" role="alert">
+        <p id={idDoErro} className="conta-erro" role="alert">
           {erro}
         </p>
       )}
@@ -165,7 +170,25 @@ function Entrar({ estado }: { estado: EstadoDaNuvem }) {
 
 function DentroDaConta({ estado }: { estado: EstadoDaNuvem }) {
   const [uso, setUso] = useState<UsoDaNuvem | null>(null)
+  const [confirmando, setConfirmando] = useState(false)
   const [saindo, setSaindo] = useState(false)
+  const idDaPergunta = useId()
+  const linhaDoEmail = useRef<HTMLParagraphElement>(null)
+  const botaoDeSair = useRef<HTMLButtonElement>(null)
+  const botaoDeCancelar = useRef<HTMLButtonElement>(null)
+
+  // Acabou de entrar (o formulário sumiu) ou abriu o diálogo: o foco vai para a conta, e o leitor de
+  // tela diz em qual conta você está.
+  useEffect(() => linhaDoEmail.current?.focus(), [])
+  useEffect(() => {
+    if (confirmando) botaoDeCancelar.current?.focus()
+  }, [confirmando])
+
+  const sair = () => {
+    if (saindo) return
+    setSaindo(true)
+    void api.nuvem.sair().finally(() => setSaindo(false))
+  }
 
   // O uso muda depois de cada sincronização.
   useEffect(() => {
@@ -182,8 +205,9 @@ function DentroDaConta({ estado }: { estado: EstadoDaNuvem }) {
 
   return (
     <div className="conta-dentro">
-      <p className="conta-email">
+      <p className="conta-email" ref={linhaDoEmail} tabIndex={-1}>
         <Icone nome="pessoa" />
+        <span className="so-leitor-de-tela">Você está na conta </span>
         {estado.conta!.email}
       </p>
       <p className="conta-situacao" role="status">
@@ -200,32 +224,57 @@ function DentroDaConta({ estado }: { estado: EstadoDaNuvem }) {
           limite por arquivo da nuvem. A posição de leitura sincroniza mesmo assim.
         </p>
       )}
-      <div className="botoes">
-        <button
-          type="button"
-          className="botao"
-          aria-disabled={estado.sincronizando || undefined}
-          onClick={() => !estado.sincronizando && void api.nuvem.sincronizar()}
-        >
-          <Icone nome="sincronizar" />
-          Sincronizar agora
-        </button>
-        <button
-          type="button"
-          className="botao"
-          aria-disabled={saindo || undefined}
-          onClick={() => {
-            if (saindo) return
-            setSaindo(true)
-            void api.nuvem.sair().finally(() => setSaindo(false))
-          }}
-        >
-          Sair da conta
-        </button>
-      </div>
-      <p className="dica">
-        Saindo, os livros que estão só na nuvem saem deste computador; os daqui ficam. Nos outros aparelhos, nada muda.
-      </p>
+      {confirmando ? (
+        <div className="conta-confirmar" role="group" aria-labelledby={idDaPergunta}>
+          <p id={idDaPergunta} className="conta-pergunta">
+            Sair da conta neste computador?
+          </p>
+          <p className="dica">
+            Os livros que vieram da nuvem saem deste computador; os que você adicionou aqui ficam. Nos outros aparelhos,
+            nada muda.
+          </p>
+          {estado.pendentes > 0 && (
+            <p className="conta-aviso">
+              <Icone nome="aviso" />
+              {plural(estado.pendentes, 'mudança ainda não subiu', 'mudanças ainda não subiram')}. Saindo, o app tenta mandar
+              antes; sem conexão, elas não chegam aos outros aparelhos.
+            </p>
+          )}
+          <div className="botoes">
+            <button type="button" className="botao principal" aria-disabled={saindo || undefined} onClick={sair}>
+              {saindo ? 'Saindo…' : 'Sair'}
+            </button>
+            <button
+              ref={botaoDeCancelar}
+              type="button"
+              className="botao"
+              aria-disabled={saindo || undefined}
+              onClick={() => {
+                if (saindo) return
+                setConfirmando(false)
+                requestAnimationFrame(() => botaoDeSair.current?.focus())
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="botoes">
+          <button
+            type="button"
+            className="botao"
+            aria-disabled={estado.sincronizando || undefined}
+            onClick={() => !estado.sincronizando && void api.nuvem.sincronizar()}
+          >
+            <Icone nome="sincronizar" />
+            Sincronizar agora
+          </button>
+          <button ref={botaoDeSair} type="button" className="botao" onClick={() => setConfirmando(true)}>
+            Sair da conta
+          </button>
+        </div>
+      )}
     </div>
   )
 }

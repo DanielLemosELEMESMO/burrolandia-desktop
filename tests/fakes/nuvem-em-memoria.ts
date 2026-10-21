@@ -30,6 +30,8 @@ export class NuvemEmMemoria {
   /** Sessões válidas: encerrar uma faz o aparelho dela ver SessaoTerminada. */
   readonly sessoes = new Set<string>()
   foraDoAr = false
+  /** Quanto cada conta pode guardar (como o uso_da_nuvem do banco de verdade). */
+  limitePorConta = 838_860_800
   /** Pedidos feitos, para os testes conferirem ("guardar", "enviar capas/…"). */
   readonly pedidos: string[] = []
   #relogio = 0
@@ -148,6 +150,9 @@ export class RemotoEmMemoria implements Remoto {
     this.#aoTerminar = quando
   }
 
+  /** Aqui não há pedido em andamento para cancelar (tudo responde na hora). */
+  cancelar() {}
+
   /** A conta da sessão, se ainda vale. */
   #daSessao(): string {
     this.nuvem._verificar()
@@ -179,7 +184,7 @@ export class RemotoEmMemoria implements Remoto {
     const bytes = [...this.nuvem.arquivos.entries()]
       .filter(([chave]) => chave.split('/')[1] === id)
       .reduce((soma, [, a]) => soma + a.bytes.length, 0)
-    return { livros: vivos.length, arquivos: vivos.filter(([, l]) => l.arquivo).length, bytes }
+    return { livros: vivos.length, arquivos: vivos.filter(([, l]) => l.arquivo).length, bytes, limite: this.nuvem.limitePorConta }
   }
 
   async enviar(bucket: Bucket, caminho: string, bytes: Uint8Array, tipo: string) {

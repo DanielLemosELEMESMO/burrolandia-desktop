@@ -22,7 +22,11 @@ const senhaValida = (senha: unknown): senha is string =>
   typeof senha === 'string' && senha.length > 0 && new TextEncoder().encode(senha).length <= 72
 const contaInvalida = (email: unknown): ResultadoDaConta =>
   emailValido(email)
-    ? { ok: false, codigo: 'senha-fraca', mensagem: 'A senha precisa ter de 8 a 72 caracteres.' }
+    ? {
+        ok: false,
+        codigo: 'senha-fraca',
+        mensagem: 'A senha precisa ter de 8 a 72 caracteres (letras com acento e símbolos contam como dois ou mais).',
+      }
     : { ok: false, codigo: 'email-invalido', mensagem: MENSAGENS_DA_CONTA['email-invalido'] }
 
 export function lerPreferencias(banco: Banco): Preferencias {
@@ -76,9 +80,10 @@ export function registrarIpc(
 
   ipcMain.handle('biblioteca:imagens', (_, id: unknown) => (idValido(id) ? biblioteca.imagensDoLivro(id) : []))
 
-  ipcMain.handle('biblioteca:salvar-capa', (_, id: unknown, imagem: unknown) => {
+  // escolhida: você trocou a capa (vale sobre as dos outros aparelhos); senão, é a gerada pelo app.
+  ipcMain.handle('biblioteca:salvar-capa', (_, id: unknown, imagem: unknown, escolhida: unknown) => {
     if (!idValido(id) || !(imagem instanceof Uint8Array)) return null
-    return biblioteca.salvarCapa(id, imagem)
+    return biblioteca.salvarCapa(id, imagem, { escolhida: escolhida === true })
   })
 
   ipcMain.handle('leitura:abrir', async (_, id: unknown) => {

@@ -47,6 +47,23 @@ export interface Lapide {
   removidoEm: string
 }
 
+/**
+ * A hora do que o app faz sozinho (o título e a capa que vieram no arquivo, o reconhecimento
+ * automático, a capa gerada da primeira página): perde para qualquer escolha sua, em qualquer
+ * aparelho, e entre duas automáticas fica a que chegou primeiro à nuvem.
+ */
+export const HORA_FRACA = '1970-01-01T00:00:00.000Z'
+
+/**
+ * A hora de um reconhecimento: o que o app achou sozinho fica entre o que veio no arquivo e a sua
+ * escolha (escolhido, recusado), com o ISBN acima do título e o "não achou" abaixo dos dois.
+ */
+export function horaDoReconhecimento(reconhecimento: Reconhecimento, agora = new Date()): string {
+  const automatico: Partial<Record<Reconhecimento, number>> = { pendente: 0, 'sem-resultado': 1, titulo: 2, isbn: 3 }
+  const passo = automatico[reconhecimento]
+  return passo === undefined ? agora.toISOString() : new Date(Date.parse(HORA_FRACA) + passo).toISOString()
+}
+
 /** Um relógio adiantado não ganha todas: as horas dos aparelhos passam no máximo 5 minutos do servidor. */
 const FOLGA_DO_RELOGIO = 5 * 60_000
 
@@ -100,6 +117,9 @@ export function guardarNaNuvem(atual: Estado | undefined, recebido: LivroParaGua
     ...(capaNova && { capa: item.capa, capaEm: item.capaEm }),
     arquivo: atual.arquivo ?? item.arquivo,
     ...(posicaoNova && { posicao: item.posicao, progresso: item.progresso, posicaoEm: item.posicaoEm }),
+    // Adicionado de novo (novo para a conta) com o livro ainda vivo: conta a hora mais recente, e uma
+    // remoção atrasada de outro aparelho, feita antes disso, não o tira.
+    adicionadoEm: item.novo && depoisDe(item.adicionadoEm, atual.adicionadoEm) ? item.adicionadoEm : atual.adicionadoEm,
     abertoEm: depoisDe(item.abertoEm, atual.abertoEm) ? item.abertoEm : atual.abertoEm,
   }
 }

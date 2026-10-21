@@ -47,6 +47,8 @@ export interface Remoto {
   sair(): Promise<void>
   /** Avisa quando a sessão termina sozinha (a renovação foi recusada). */
   aoTerminarSessao(quando: () => void): void
+  /** Desiste dos pedidos em andamento (saindo da conta ou trocando de conta): eles falham sem conexão. */
+  cancelar(): void
 
   /** Guarda os livros pelas regras de conflito; devolve como cada um ficou na nuvem. */
   guardar(livros: LivroParaGuardar[]): Promise<LivroNaNuvem[]>

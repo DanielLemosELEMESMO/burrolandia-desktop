@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Banco, type NovoLivro } from '../../src/main/banco'
-import type { LivroNaNuvem } from '@nucleo/nuvem/regras'
+import { HORA_FRACA, type LivroNaNuvem } from '@nucleo/nuvem/regras'
 import type { Edicao, Locator, Obra } from '@nucleo/tipos'
 
 const novoLivro = (parcial: Partial<NovoLivro> = {}): NovoLivro => ({
@@ -254,6 +254,20 @@ describe('Banco: nuvem (parte 2)', () => {
     expect(avisos).toBe(5)
   })
 
+  it('a mesma posição de novo não muda nada: nem a hora, nem a fila, nem avisa', () => {
+    const livro = banco.inserirLivro(novoLivro())
+    banco.salvarPosicao(livro.id, posicao)
+    const antes = banco.paraSincronia(livro.id)!
+    let avisos = 0
+    banco.quandoMudar(() => avisos++)
+    banco.salvarPosicao(livro.id, structuredClone(posicao))
+    expect(banco.paraSincronia(livro.id)).toEqual(antes)
+    expect(avisos).toBe(0)
+    banco.salvarPosicao(livro.id, { ...posicao, locations: { ...posicao.locations, cfi: 'epubcfi(/6/8!/4/2/1:0)' } })
+    expect(banco.paraSincronia(livro.id)!.versao).toBe(antes.versao + 1)
+    expect(avisos).toBe(1)
+  })
+
   it('remover um livro que já estava na nuvem deixa a lápide; um que nunca subiu, não', () => {
     const subiu = banco.inserirLivro(novoLivro({ hashSha256: 'a'.repeat(64) }))
     banco.marcarEnviado(subiu.id, 1)
@@ -294,19 +308,21 @@ describe('Banco: nuvem (parte 2)', () => {
     expect(banco.paraSincronia(livro.id)).toMatchObject({ arquivoNaNuvem: `${'d'.repeat(64)}.epub`, versao: 1, versaoEnviada: 1 })
   })
 
-  it('sair da conta tira os livros que só estavam na nuvem e deixa os daqui como nunca enviados', () => {
+  it('sair da conta tira os livros que vieram da nuvem (baixados ou não) e deixa os daqui como nunca enviados', () => {
     const daqui = banco.inserirLivro(novoLivro())
     banco.marcarEnviado(daqui.id, 1)
-    banco.marcarCapaNaNuvem(daqui.id, 'capa-aaaaaaaaaaaa.jpg')
-    const nuvem = banco.inserirDaNuvem(crypto.randomUUID(), daNuvem('e'.repeat(64)))
+    expect(banco.marcarCapaNaNuvem(daqui.id, 'capa.jpg', 'capa-aaaaaaaaaaaa.jpg')).toBe(true)
+    const naNuvem = banco.inserirDaNuvem(crypto.randomUUID(), daNuvem('e'.repeat(64)))
+    const baixado = banco.inserirDaNuvem(crypto.randomUUID(), daNuvem('c'.repeat(64)))
+    banco.completarDaNuvem(baixado.id, { arquivoOriginal: 'original.epub', arquivoLeitura: 'original.epub' })
     banco.removerLivro(banco.inserirLivro(novoLivro({ hashSha256: 'f'.repeat(64) })).id)
-    expect(banco.esquecerNuvem()).toEqual([nuvem.id])
+    expect(banco.esquecerNuvem().sort()).toEqual([naNuvem.id, baixado.id].sort())
     expect(banco.listarLivros().map(l => l.id)).toEqual([daqui.id])
     expect(banco.paraSincronia(daqui.id)).toMatchObject({ versaoEnviada: 0, capaNaNuvem: null, arquivoNaNuvem: null })
     expect(banco.lapides()).toEqual([])
   })
 
-  it('um banco da etapa 3 ganha as horas de cada mudança, e tudo fica para subir', () => {
+  it('um banco da etapa 3 ganha as horas de cada mudança (a do que é automático, fraca), e tudo fica para subir', () => {
     banco.fechar()
     const caminho = join(pasta, 'etapa3.db')
     const antigo = new DatabaseSync(caminho)
@@ -326,17 +342,27 @@ describe('Banco: nuvem (parte 2)', () => {
       'epub', 'original.epub', 'original.epub', 'capa.jpg', 'abc', 10, '{"isbn":[],"outros":[]}', 'pronto',
       '{"href":"a.xhtml","type":"application/xhtml+xml","locations":{}}', 0.1, '2026-10-01T00:00:00.000Z', NULL,
       '2026-10-05T00:00:00.000Z', NULL, NULL, 'pendente');
+    INSERT INTO livros VALUES ('00000000-0000-4000-8000-000000000002', 'Senhora', '["José de Alencar"]', 'pt-BR',
+      'epub', 'original.epub', 'original.epub', 'capa-0123456789ab.jpg', 'def', 10, '{"isbn":[],"outros":[]}', 'pronto',
+      NULL, 0, '2026-10-01T00:00:00.000Z', NULL, '2026-10-06T00:00:00.000Z', 'OL1W', NULL, 'escolhido');
     PRAGMA user_version = 2;`)
     antigo.close()
 
     banco = new Banco(caminho)
+    // O título e a capa que vieram no arquivo, sem nada escolhido: hora fraca. A posição é sempre sua.
     expect(banco.paraSincronia('00000000-0000-4000-8000-000000000001')).toMatchObject({
-      metadadosEm: '2026-10-05T00:00:00.000Z',
-      capaEm: '2026-10-05T00:00:00.000Z',
+      metadadosEm: HORA_FRACA,
+      capaEm: HORA_FRACA,
       posicaoEm: '2026-10-05T00:00:00.000Z',
       versao: 1,
       versaoEnviada: 0,
     })
-    expect(banco.contarPendentes()).toBe(1)
+    // A obra escolhida e a capa trocada (com o nome do conteúdo) ficam com a hora de verdade.
+    expect(banco.paraSincronia('00000000-0000-4000-8000-000000000002')).toMatchObject({
+      metadadosEm: '2026-10-06T00:00:00.000Z',
+      capaEm: '2026-10-06T00:00:00.000Z',
+      posicaoEm: null,
+    })
+    expect(banco.contarPendentes()).toBe(2)
   })
 })

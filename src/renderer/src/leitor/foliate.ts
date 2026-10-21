@@ -25,6 +25,8 @@ export interface DetalheRelocate {
   pageItem?: ItemDoSumario | null
   cfi: string
   range?: Range
+  /** Por que a posição mudou: "anchor" é o layout (abrir, letra, janela); os outros, uma navegação. */
+  reason?: 'page' | 'snap' | 'scroll' | 'anchor' | 'navigation' | 'selection' | null
 }
 
 export interface RendererFoliate extends HTMLElement {

@@ -6,4 +6,6 @@
 
 Mudanças locais:
 - `pdf.js` trocado por um stub (o original importa `vendor/pdfjs`, que não vem no repositório).
+- `view.js`: o evento `relocate` leva o `reason` do renderer (page, snap, scroll, anchor, navigation,
+  selection); o leitor usa para saber se a posição mudou por você ou pelo layout.
 - Ficaram de fora: `reader.html`, `reader.js`, `ui/`, `dict.js`, `opds.js`, `quote-image.js`, `uri-template.js`, testes.

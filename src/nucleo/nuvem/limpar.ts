@@ -15,7 +15,11 @@ const ehObjeto = (x: unknown): x is Record<string, unknown> => typeof x === 'obj
 const texto = (x: unknown, limite: number) => (typeof x === 'string' && x.trim() ? x.slice(0, limite) : null)
 const textos = (x: unknown, limite = 50, tamanho = 300) =>
   Array.isArray(x) ? x.filter((t): t is string => typeof t === 'string').slice(0, limite).map(t => t.slice(0, tamanho)) : []
-const hora = (x: unknown) => (typeof x === 'string' && !Number.isNaN(Date.parse(x)) ? x : null)
+/** Uma hora válida, no formato do aparelho (ISO com milissegundos): compara certo também como texto. */
+const hora = (x: unknown) => {
+  const tempo = typeof x === 'string' ? Date.parse(x) : Number.NaN
+  return Number.isNaN(tempo) ? null : new Date(tempo).toISOString()
+}
 const inteiro = (x: unknown) => (typeof x === 'number' && Number.isSafeInteger(x) && x >= 0 ? x : null)
 
 function identificadores(x: unknown): Identificadores {

@@ -315,6 +315,42 @@
   text-align: center;
 }
 
+/* O recado de quando o livro vai para a posição lida em outro aparelho: aparece e some sozinho. */
+.leitor-recado {
+  position: absolute;
+  top: 76px;
+  left: 50%;
+  z-index: 7;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(520px, calc(100vw - 48px));
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: var(--superficie);
+  box-shadow: var(--sombra);
+  font-size: 14px;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.leitor-recado:empty {
+  padding: 0;
+  box-shadow: none;
+}
+
+.leitor-recado[data-visivel] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leitor-recado {
+    transition: none;
+  }
+}
+
 /* O zoom não encolhe: quem encolhe (e corta com reticências) é o texto ao lado. */
 .rodape-zoom {
   display: inline-flex;

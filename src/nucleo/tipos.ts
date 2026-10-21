@@ -210,6 +210,8 @@ export interface UsoDaNuvem {
   arquivos: number
   /** Bytes guardados, capas e arquivos. */
   bytes: number
+  /** Quanto a conta pode guardar (o app não sobe arquivos além disso). */
+  limite: number
 }
 
 /** O maior arquivo que sobe para a nuvem (o limite por arquivo do plano gratuito do Supabase). */

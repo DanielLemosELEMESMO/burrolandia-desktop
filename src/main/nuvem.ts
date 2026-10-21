@@ -16,6 +16,7 @@ import {
   type CodigoDaConta,
   type Conta,
   type EstadoDaNuvem,
+  type Locator,
   type ResultadoDaConta,
   type ResultadoDoDownload,
   type UsoDaNuvem,
@@ -46,10 +47,21 @@ const VOLTANDO = 30_000
 const VOLTA = 60_000
 const LOTE = 100
 const PAGINA = 500
+/** Saindo da conta, quanto esperar o que falta subir (sem conexão, nada espera). */
+const ANTES_DE_SAIR = 3_000
+/** Saindo ou trocando de conta, quanto esperar o ciclo em andamento parar (os pedidos são cancelados). */
+const FIM_DO_CICLO = 2_000
 
 const CONTA = 'nuvem:conta'
 const MARCADOR = 'nuvem:marcador'
 const ULTIMA_VEZ = 'nuvem:ultima-vez'
+
+/** Até onde este aparelho já leu as mudanças da nuvem, e de qual conta. */
+interface Marcador {
+  conta: string
+  desde: string
+  hash: string
+}
 
 export const MENSAGENS_DA_CONTA: Record<CodigoDaConta, string> = {
   'senha-errada': 'E-mail ou senha não conferem.',
@@ -80,6 +92,8 @@ export interface OpcoesDaNuvem {
   deNovo?: number
   /** O maior arquivo que sobe (nos testes, menor). */
   limiteDoArquivo?: number
+  /** Saindo ou trocando de conta, quanto esperar o ciclo em andamento parar. */
+  fimDoCiclo?: number
 }
 
 export class Nuvem {
@@ -88,13 +102,16 @@ export class Nuvem {
   #geracao = 0
   #rodando: Promise<void> | null = null
   #deNovo = false
-  #recebendo: Promise<boolean> | null = null
+  #recebendo: { geracao: number; promessa: Promise<boolean> } | null = null
   #mudouNoCiclo = false
   #agendada: ReturnType<typeof setTimeout> | null = null
   #retentativa: ReturnType<typeof setTimeout> | null = null
   #periodica: ReturnType<typeof setInterval> | null = null
   readonly #baixando = new Map<string, Promise<ResultadoDoDownload>>()
+  /** Livros que a nuvem recusou nesta versão (id → versão): esperam mudar para tentar de novo. */
+  readonly #recusados = new Map<string, number>()
   readonly #tempos: Required<OpcoesDaNuvem>
+  #aoChegarPosicao: (id: string, posicao: Locator) => void = () => {}
 
   constructor(
     private readonly banco: Banco,
@@ -106,9 +123,10 @@ export class Nuvem {
       intervalo = INTERVALO,
       deNovo = DE_NOVO,
       limiteDoArquivo = LIMITE_DO_ARQUIVO_NA_NUVEM,
+      fimDoCiclo = FIM_DO_CICLO,
     }: OpcoesDaNuvem = {},
   ) {
-    this.#tempos = { espera: aposMudanca, intervalo, deNovo, limiteDoArquivo }
+    this.#tempos = { espera: aposMudanca, intervalo, deNovo, limiteDoArquivo, fimDoCiclo }
     this.#estado = {
       disponivel: !!remoto,
       conta: null,
@@ -119,6 +137,11 @@ export class Nuvem {
       grandesDemais: 0,
     }
     remoto?.aoTerminarSessao(() => this.#sessaoTerminou())
+  }
+
+  /** Avisa quando chega uma posição mais nova de outro aparelho (o leitor aberto vai para ela). */
+  quandoChegarPosicao(quando: (id: string, posicao: Locator) => void) {
+    this.#aoChegarPosicao = quando
   }
 
   estado(): EstadoDaNuvem {
@@ -158,6 +181,8 @@ export class Nuvem {
 
   async #comecar(acao: (remoto: Remoto) => Promise<Conta>): Promise<ResultadoDaConta> {
     if (!this.remoto) return { ok: false, codigo: 'sem-conexao', mensagem: MENSAGENS_DA_CONTA['sem-conexao'] }
+    // Nada da sessão de antes continua andando quando a nova começar.
+    await this.#interromper()
     let conta: Conta
     try {
       conta = await acao(this.remoto)
@@ -179,10 +204,11 @@ export class Nuvem {
     return { ok: true, estado: this.estado() }
   }
 
-  /** Sai da conta neste aparelho. Os livros daqui ficam; os que só estavam na nuvem saem. */
+  /** Sai da conta neste aparelho. Os livros adicionados aqui ficam; os que vieram da nuvem saem. */
   async sair() {
-    this.#geracao++
-    this.#pararTempos()
+    // O que falta subir sobe antes (uma remoção que não subiu traria o livro de volta).
+    if (this.#estado.conta && this.banco.contarPendentes()) await Promise.race([this.sincronizar(), espera(ANTES_DE_SAIR)])
+    await this.#interromper()
     await this.remoto?.sair().catch(erro => console.warn('Não deu para avisar a nuvem da saída', erro))
     this.#esquecer()
     this.banco.apagarPreferencia(CONTA)
@@ -190,7 +216,19 @@ export class Nuvem {
     this.#avisar(true)
   }
 
-  /** O que este aparelho sabia da conta: livros só da nuvem, envios, marcador. */
+  /**
+   * Saindo ou trocando de conta: o ciclo em andamento para no próximo passo (a geração mudou), os
+   * pedidos dele são cancelados, e espera um pouco ele terminar.
+   */
+  async #interromper() {
+    this.#geracao++
+    this.#pararTempos()
+    this.remoto?.cancelar()
+    const andando = [this.#rodando, this.#recebendo?.promessa, ...this.#baixando.values()]
+    await Promise.race([Promise.allSettled(andando), espera(this.#tempos.fimDoCiclo)])
+  }
+
+  /** O que este aparelho sabia da conta: livros que vieram da nuvem, envios, marcador. */
   #esquecer() {
     this.banco.esquecerNuvem()
     this.banco.apagarPreferencia(MARCADOR)
@@ -220,6 +258,7 @@ export class Nuvem {
   parar(): Promise<void> {
     this.#geracao++
     this.#pararTempos()
+    this.remoto?.cancelar()
     return this.#rodando?.catch(() => {}) ?? Promise.resolve()
   }
 
@@ -310,32 +349,38 @@ export class Nuvem {
     this.#retentativa.unref?.()
   }
 
-  /** Traz o que mudou na nuvem (um pedido por vez). Devolve se algo mudou aqui. */
+  /** Traz o que mudou na nuvem (um pedido por vez, por conta). Devolve se algo mudou aqui. */
   #receber(geracao: number): Promise<boolean> {
-    this.#recebendo ??= this.#lerMudancas(geracao).finally(() => {
-      this.#recebendo = null
+    if (this.#recebendo?.geracao === geracao) return this.#recebendo.promessa
+    const promessa: Promise<boolean> = this.#lerMudancas(geracao).finally(() => {
+      if (this.#recebendo?.promessa === promessa) this.#recebendo = null
     })
-    return this.#recebendo
+    this.#recebendo = { geracao, promessa }
+    return promessa
   }
 
   async #lerMudancas(geracao: number): Promise<boolean> {
-    const marcador = this.banco.lerPreferencia<{ desde: string; hash: string }>(MARCADOR)
-    let desde = marcador ? new Date(Date.parse(marcador.desde) - VOLTA).toISOString() : null
+    const conta = this.#estado.conta?.id
+    if (!conta) return false
+    // O marcador de outra conta (ou de antes de ele saber a conta) não vale: lê tudo de novo.
+    const marcador = this.banco.lerPreferencia<Marcador>(MARCADOR)
+    let desde = marcador?.conta === conta ? new Date(Date.parse(marcador.desde) - VOLTA).toISOString() : null
     let depoisDe: string | null = null
-    let ultimo: { desde: string; hash: string } | null = null
+    let ultimo: Marcador | null = null
     let mudou = false
     for (let pagina = 0; pagina < 1000; pagina++) {
       const lote = await this.remoto!.mudancas(desde, depoisDe, PAGINA)
-      if (geracao !== this.#geracao) return false
       for (const bruto of lote) {
+        if (geracao !== this.#geracao) return false
         const livro = limparDaNuvem(bruto)
-        if (livro && (await this.#aplicar(livro))) mudou = true
+        if (livro && (await this.#aplicar(livro, geracao))) mudou = true
       }
+      if (geracao !== this.#geracao) return false
       const fim = lote.at(-1)
       if (fim) {
         desde = fim.atualizadoEm
         depoisDe = fim.hash
-        ultimo = { desde: fim.atualizadoEm, hash: fim.hash }
+        ultimo = { conta, desde: fim.atualizadoEm, hash: fim.hash }
       }
       if (lote.length < PAGINA) break
     }
@@ -347,8 +392,12 @@ export class Nuvem {
     return mudou
   }
 
-  /** Um livro que veio da nuvem entra aqui. Devolve se algo mudou na biblioteca. */
-  async #aplicar(remoto: LivroNaNuvem): Promise<boolean> {
+  /**
+   * Um livro que veio da nuvem entra aqui. Devolve se algo mudou na biblioteca. Depois de cada
+   * espera, confere a geração: saindo da conta no meio, nada da conta de antes entra.
+   */
+  async #aplicar(remoto: LivroNaNuvem, geracao: number): Promise<boolean> {
+    if (geracao !== this.#geracao) return false
     const local = this.banco.porHashParaSincronia(remoto.hash)
     const decisao = decidir(local, remoto, this.banco.temLapide(remoto.hash))
     switch (decisao.tipo) {
@@ -360,13 +409,14 @@ export class Nuvem {
       case 'criar': {
         const livro = await this.biblioteca.criarDaNuvem(remoto)
         this.#guardarObra(remoto)
-        if (remoto.capa) await this.#baixarCapa(livro.id, remoto)
+        if (remoto.capa) await this.#baixarCapa(livro.id, remoto, geracao)
         return true
       }
       case 'atualizar': {
         if (decisao.metadados) this.#guardarObra(remoto)
         const mudou = this.banco.aplicarDaNuvem(local!.id, remoto, decisao)
-        const capa = decisao.capa === 'baixar' && (await this.#baixarCapa(local!.id, remoto))
+        if (decisao.posicao && remoto.posicao) this.#aoChegarPosicao(local!.id, remoto.posicao)
+        const capa = decisao.capa === 'baixar' && (await this.#baixarCapa(local!.id, remoto, geracao))
         return mudou || capa
       }
     }
@@ -377,9 +427,10 @@ export class Nuvem {
     if (remoto.edicao) this.banco.salvarEdicao(remoto.edicao)
   }
 
-  async #baixarCapa(id: string, remoto: LivroNaNuvem): Promise<boolean> {
+  async #baixarCapa(id: string, remoto: LivroNaNuvem, geracao: number): Promise<boolean> {
     try {
       const bytes = await this.remoto!.baixar('capas', `${remoto.hash}/${remoto.capa}`)
+      if (geracao !== this.#geracao) return false
       return await this.biblioteca.guardarCapaDaNuvem(id, remoto.capa!, bytes, remoto.capaEm)
     } catch (erro) {
       // Sem a imagem na nuvem, a capa daqui fica; da próxima vez que o livro mudar, tenta de novo.
@@ -393,42 +444,61 @@ export class Nuvem {
       const lapides = this.banco.lapides().slice(0, LOTE)
       if (!lapides.length || geracao !== this.#geracao) return
       const resultado = await this.remoto!.remover(lapides)
-      if (geracao !== this.#geracao) return
-      this.banco.esquecerLapides(lapides.map(l => l.hash))
       for (const lapide of lapides) {
+        if (geracao !== this.#geracao) return
         const ficou = resultado.find(l => l.hash === lapide.hash)
         // Adicionado de novo em outro aparelho depois da remoção daqui: ele volta.
         const vivo = ficou && !ficou.removidoEm ? limparDaNuvem(ficou) : null
         if (vivo) {
-          if (await this.#aplicar(vivo)) this.#mudouNoCiclo = true
+          this.banco.esquecerLapides([lapide.hash])
+          if (await this.#aplicar(vivo, geracao)) this.#mudouNoCiclo = true
           continue
         }
-        // A capa e o arquivo saem da nuvem junto (o banco de lá não alcança o armazenamento).
+        // A capa e o arquivo saem da nuvem junto (o banco de lá não alcança o armazenamento). A
+        // lápide só é esquecida depois: se apagar falhar, ela volta a subir e apaga na próxima vez.
         const capas = await this.remoto!.listar('capas', lapide.hash)
+        if (geracao !== this.#geracao) return
         await this.remoto!.apagar('capas', capas.map(nome => `${lapide.hash}/${nome}`))
+        if (geracao !== this.#geracao) return
         await this.remoto!.apagar('arquivos', [`${lapide.hash}.epub`, `${lapide.hash}.pdf`])
+        if (geracao !== this.#geracao) return
+        this.banco.esquecerLapides([lapide.hash])
       }
     }
   }
 
   async #enviarLivros(geracao: number) {
     for (let vez = 0; vez < 50; vez++) {
-      const pendentes = this.banco.pendentesDeEnvio(LOTE)
+      const pendentes = this.banco.pendentesDeEnvio(LOTE, this.#recusados)
       if (!pendentes.length || geracao !== this.#geracao) return
       const capasNovas = new Set<string>()
-      for (const livro of pendentes) if (await this.#subirCapa(livro)) capasNovas.add(livro.hashSha256)
+      for (const livro of pendentes) {
+        if (await this.#subirCapa(livro, geracao)) capasNovas.add(livro.hashSha256)
+        if (geracao !== this.#geracao) return
+      }
+      // Como cada livro está agora (a capa pode ter acabado de subir).
       const lidos = pendentes.flatMap(l => this.banco.paraSincronia(l.id) ?? [])
       const resultado = await this.#guardar(lidos)
       if (geracao !== this.#geracao) return
-      for (const livro of lidos) this.banco.marcarEnviado(livro.id, livro.versao)
+      // Só o que a nuvem devolveu foi guardado; o que ela recusou fica pendente (e espera mudar). Uma
+      // capa trocada durante o envio ainda não está lá: essa versão sobe de novo, com a capa.
+      const guardados = new Set(resultado.map(l => l.hash))
+      const capaVista = new Map(pendentes.map(l => [l.id, l.capa]))
+      let capaTrocada = false
+      for (const livro of lidos) {
+        if (!guardados.has(livro.hashSha256)) this.#recusados.set(livro.id, livro.versao)
+        else if (livro.capa !== capaVista.get(livro.id) && livro.capa !== livro.capaNaNuvem) capaTrocada = true
+        else this.banco.marcarEnviado(livro.id, livro.versao)
+      }
       for (const bruto of resultado) {
+        if (geracao !== this.#geracao) return
         const livro = limparDaNuvem(bruto)
         if (!livro) continue
-        if (await this.#aplicar(livro)) this.#mudouNoCiclo = true
+        if (await this.#aplicar(livro, geracao)) this.#mudouNoCiclo = true
         // Capas que não valem mais (a anterior, ou a daqui que perdeu para uma mais nova) saem.
-        if (capasNovas.has(livro.hash)) await this.#limparCapas(livro)
+        if (capasNovas.has(livro.hash)) await this.#limparCapas(livro, geracao)
       }
-      if (pendentes.length < LOTE) return
+      if (pendentes.length < LOTE && !capaTrocada) return
     }
   }
 
@@ -477,20 +547,21 @@ export class Nuvem {
   }
 
   /** Sobe a capa do livro, se a daqui ainda não está na nuvem. */
-  async #subirCapa(livro: LivroSincronizavel): Promise<boolean> {
+  async #subirCapa(livro: LivroSincronizavel, geracao: number): Promise<boolean> {
     if (!livro.capa || livro.capa === livro.capaNaNuvem) return false
-    const bytes = await this.biblioteca.lerCapa(livro.id)
+    const bytes = await this.biblioteca.lerCapa(livro.id, livro.capa)
     const nome = bytes && nomeDaCapaNaNuvem(bytes)
-    if (!bytes || !nome) return false
+    if (!bytes || !nome || geracao !== this.#geracao) return false
     await this.remoto!.enviar('capas', `${livro.hashSha256}/${nome}`, bytes, tipoDe(nome))
-    await this.biblioteca.marcarCapaNaNuvem(livro.id, nome, bytes)
-    return true
+    if (geracao !== this.#geracao) return false
+    // Trocada no meio do envio: a nova sobe na próxima vez, e esta vira sobra na nuvem.
+    return this.biblioteca.marcarCapaNaNuvem(livro.id, livro.capa, nome, bytes)
   }
 
-  async #limparCapas(livro: LivroNaNuvem) {
-    if (!livro.capa) return
+  async #limparCapas(livro: LivroNaNuvem, geracao: number) {
+    if (!livro.capa || geracao !== this.#geracao) return
     const sobras = (await this.remoto!.listar('capas', livro.hash)).filter(nome => nome !== livro.capa)
-    if (sobras.length) await this.remoto!.apagar('capas', sobras.map(nome => `${livro.hash}/${nome}`))
+    if (sobras.length && geracao === this.#geracao) await this.remoto!.apagar('capas', sobras.map(nome => `${livro.hash}/${nome}`))
   }
 
   async #enviarArquivos(geracao: number) {

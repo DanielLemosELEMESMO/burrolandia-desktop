@@ -183,6 +183,8 @@ if (!app.requestSingleInstanceLock()) {
     nuvem = sincronia
     // Cada mudança daqui (posição, capa, livro novo, removido) sobe uns segundos depois.
     banco.quandoMudar(() => sincronia.agendar())
+    // Lido em outro aparelho com o livro aberto aqui: o leitor vai para a posição nova.
+    sincronia.quandoChegarPosicao((id, posicao) => avisarJanelas('leitura:posicao-de-outro-aparelho', id, posicao))
 
     tratarProtocolo(biblioteca, pastaInterface)
     registrarIpc(banco, biblioteca, catalogo, sincronia, () => {

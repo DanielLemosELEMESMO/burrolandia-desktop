@@ -35,6 +35,9 @@ const FONTES: FontesLocais = {
 
 const ESPERA_PARA_ESCONDER = 2500
 const ESPERA_PARA_SALVAR = 300
+/** Depois de um comando seu, por quanto tempo a posição nova ainda é sua (um capítulo grande demora a abrir). */
+const JANELA_DO_COMANDO = 5000
+const TEMPO_DO_RECADO = 6000
 
 type Painel = null | 'sumario' | 'ajustes'
 type Modo = 'texto' | 'original'
@@ -64,10 +67,12 @@ function hrefDaPagina(livro: LivroFoliate, numero: number): string | null {
 }
 
 /**
- * Abre o texto onde você parou: pelo CFI; se ele não levar a lugar nenhum (o livro mudou), pela
- * página do original; depois pela fração do livro; por fim, no começo do texto.
+ * Vai para a posição: pelo CFI; se ele não levar a lugar nenhum (o livro mudou), pela página do
+ * original; depois pela fração do livro. Devolve se chegou a algum lugar.
  */
-async function voltarParaOndeParou(visao: VisaoFoliate, posicao: Locator | null) {
+async function irParaPosicao(visao: VisaoFoliate, posicao: Locator | null): Promise<boolean> {
+  const antes = visao.lastLocation
+  const chegou = () => !!visao.lastLocation && visao.lastLocation !== antes
   const cfi = posicao?.locations.cfi
   if (cfi && visao.resolveNavigation(cfi)) {
     try {
@@ -75,20 +80,25 @@ async function voltarParaOndeParou(visao: VisaoFoliate, posicao: Locator | null)
     } catch (erro) {
       console.warn('A posição salva não abriu; tentando de outro jeito', erro)
     }
-    if (visao.lastLocation) return
+    if (chegou()) return true
   }
   const pagina = paginaDoLocator(posicao)
   const href = pagina ? hrefDaPagina(visao.book, pagina) : null
   if (href) {
     await visao.goTo(href)
-    if (visao.lastLocation) return
+    if (chegou()) return true
   }
   const fracao = posicao?.locations.totalProgression
   if (fracao) {
     await visao.goToFraction(fracao)
-    if (visao.lastLocation) return
+    if (chegou()) return true
   }
-  await visao.init({ showTextStart: true })
+  return false
+}
+
+/** Abre o texto onde você parou; sem posição que leve a algum lugar, no começo do texto. */
+async function voltarParaOndeParou(visao: VisaoFoliate, posicao: Locator | null) {
+  if (!(await irParaPosicao(visao, posicao))) await visao.init({ showTextStart: true })
 }
 
 const chaveDoModo = (id: string) => `burrolandia:modo:${id}`
@@ -182,6 +192,19 @@ export function TelaLeitor({
   const ultimaPosicao = useRef<Locator | null>(null)
   const salvamento = useRef<number | undefined>(undefined)
   const esconder = useRef<number | undefined>(undefined)
+  const [recado, setRecado] = useState<string | null>(null)
+
+  // Só vira "onde você parou" o que você fez: virar a página, rolar, o sumário, um link do livro.
+  // Abrir o livro, mudar a letra ou o tamanho da janela também mexem no texto, mas não são você: se
+  // contassem, um aparelho que só abriu o livro passaria por cima da leitura feita em outro.
+  const comando = useRef(0)
+  /** O texto já abriu onde você parou (antes disso, nada do que acontece é seu). */
+  const textoPronto = useRef(false)
+  const marcarComando = useCallback(() => {
+    if (textoPronto.current || modoAtual.current === 'original') comando.current = performance.now()
+  }, [])
+  /** A posição que chegou de outro aparelho enquanto o texto ainda abria. */
+  const posicaoQueChegou = useRef<Locator | null>(null)
 
   const guardarPosicao = useCallback(
     (locator: Locator) => {
@@ -202,6 +225,39 @@ export function TelaLeitor({
     void api.leitura.salvarPosicao(livro.id, ultimaPosicao.current)
   }, [livro.id])
 
+  // Lido em outro aparelho com este livro aberto aqui: o leitor vai para lá. Ir para lá não é você
+  // mexendo, então não grava nada (a posição já está no banco).
+  const irParaAPosicaoQueChegou = useCallback(async (posicao: Locator) => {
+    comando.current = 0
+    if (modoAtual.current === 'original') {
+      const pagina = paginaDoLocator(posicao)
+      if (!pagina || !original.current) return
+      original.current.irPara(pagina)
+    } else {
+      const v = visao.current
+      if (!v || !(await irParaPosicao(v, posicao))) return
+    }
+    ultimaPosicao.current = posicao
+    setRecado('O livro foi para onde você parou no outro aparelho.')
+  }, [])
+
+  useEffect(
+    () =>
+      api.leitura.aoChegarPosicao((id, posicao) => {
+        // Uma gravação sua esperando para sair é mais nova que a que chegou: ela vale.
+        if (id !== livro.id || salvamento.current !== undefined) return
+        if (modoAtual.current === 'texto' && !textoPronto.current) posicaoQueChegou.current = posicao
+        else void irParaAPosicaoQueChegou(posicao)
+      }),
+    [livro.id, irParaAPosicaoQueChegou],
+  )
+
+  useEffect(() => {
+    if (!recado) return
+    const tempo = window.setTimeout(() => setRecado(null), TEMPO_DO_RECADO)
+    return () => window.clearTimeout(tempo)
+  }, [recado])
+
   const mostrarBarras = useCallback(() => {
     setBarras(true)
     window.clearTimeout(esconder.current)
@@ -221,14 +277,16 @@ export function TelaLeitor({
   )
 
   const avancar = useCallback(() => {
+    marcarComando()
     if (modoAtual.current === 'original') original.current?.proxima()
     else void visao.current?.next()
-  }, [])
+  }, [marcarComando])
 
   const voltar = useCallback(() => {
+    marcarComando()
     if (modoAtual.current === 'original') original.current?.anterior()
     else void visao.current?.prev()
-  }, [])
+  }, [marcarComando])
 
   const teclas = useCallback(
     (e: KeyboardEvent) => {
@@ -272,21 +330,29 @@ export function TelaLeitor({
           const indice = v?.lastLocation?.section?.current
           if (modoAtual.current !== 'texto' || !v || indice === undefined) return
           e.preventDefault()
+          marcarComando()
           void v.renderer.goTo({ index: indice, anchor: e.key === 'Home' ? 0 : 1 })
           return
         }
+        case 'ArrowUp':
+        case 'ArrowDown':
+          // Na rolagem, quem rola o texto é o navegador; a posição nova é sua.
+          if (!emControle) marcarComando()
+          return
         case 'Tab':
           mostrarBarras()
       }
     },
-    [mudarTamanho, mostrarBarras, avancar, voltar],
+    [mudarTamanho, mostrarBarras, avancar, voltar, marcarComando],
   )
 
   // A roda do mouse vira a página no modo Páginas do texto adaptado.
   const roda = useRef({ acumulado: 0, ultimaVirada: 0 })
   const aoRolar = useCallback((e: WheelEvent) => {
     const v = visao.current
-    if (!v || painelAtual.current || modoAtual.current !== 'texto' || preferenciasAtuais.current.fluxo !== 'paginas') return
+    if (!v || painelAtual.current || modoAtual.current !== 'texto') return
+    marcarComando()
+    if (preferenciasAtuais.current.fluxo !== 'paginas') return
     const agora = performance.now()
     if (agora - roda.current.ultimaVirada < 350) return
     roda.current.acumulado += Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX
@@ -294,27 +360,32 @@ export function TelaLeitor({
       void (roda.current.acumulado > 0 ? v.next() : v.prev())
       roda.current = { acumulado: 0, ultimaVirada: agora }
     }
-  }, [])
+  }, [marcarComando])
 
   // Clique nas margens vira a página; no meio, mostra ou esconde as barras.
-  const aoClicarNoLivro = useCallback((e: MouseEvent) => {
-    const v = visao.current
-    const caixa = host.current?.getBoundingClientRect()
-    if (!v || !caixa || e.defaultPrevented || e.button !== 0) return
-    const doc = (e.target as Node).ownerDocument
-    if (doc?.getSelection()?.toString()) return
-    if ((e.target as Element).closest?.('a, button, input, select, textarea, audio, video')) return
-    const quadro = doc?.defaultView?.frameElement as HTMLElement | null | undefined
-    const x = (quadro?.getBoundingClientRect().left ?? 0) + e.clientX
-    const relativo = (x - caixa.left) / caixa.width
-    const paginas = preferenciasAtuais.current.fluxo === 'paginas'
-    if (paginas && relativo < 0.25) void v.prev()
-    else if (paginas && relativo > 0.75) void v.next()
-    else {
-      setBarras(b => !b)
-      window.clearTimeout(esconder.current)
-    }
-  }, [])
+  const aoClicarNoLivro = useCallback(
+    (e: MouseEvent) => {
+      // Um link do livro (o foliate já cuidou dele e marcou o clique) também leva você a outro lugar.
+      if (e.button === 0 && (e.target as Element).closest?.('a[href]')) marcarComando()
+      const v = visao.current
+      const caixa = host.current?.getBoundingClientRect()
+      if (!v || !caixa || e.defaultPrevented || e.button !== 0) return
+      const doc = (e.target as Node).ownerDocument
+      if (doc?.getSelection()?.toString()) return
+      if ((e.target as Element).closest?.('a, button, input, select, textarea, audio, video')) return
+      const quadro = doc?.defaultView?.frameElement as HTMLElement | null | undefined
+      const x = (quadro?.getBoundingClientRect().left ?? 0) + e.clientX
+      const relativo = (x - caixa.left) / caixa.width
+      const paginas = preferenciasAtuais.current.fluxo === 'paginas'
+      if (paginas && relativo < 0.25) voltar()
+      else if (paginas && relativo > 0.75) avancar()
+      else {
+        setBarras(b => !b)
+        window.clearTimeout(esconder.current)
+      }
+    },
+    [marcarComando, avancar, voltar],
+  )
 
   const aplicarAparencia = useCallback(() => {
     const v = visao.current
@@ -339,13 +410,16 @@ export function TelaLeitor({
     const aoRelocar = (e: Event) => {
       const detalhe = (e as CustomEvent<DetalheRelocate>).detail
       setOnde(detalhe)
-      if (modoAtual.current === 'texto') guardarPosicao(paraLocator(elemento, detalhe))
+      const seu = detalhe.reason !== 'anchor' && performance.now() - comando.current < JANELA_DO_COMANDO
+      if (modoAtual.current === 'texto' && seu) guardarPosicao(paraLocator(elemento, detalhe))
     }
     const aoCarregarSecao = (e: Event) => {
       const { doc } = (e as CustomEvent<{ doc: Document }>).detail
       doc.addEventListener('keydown', teclas)
       doc.addEventListener('mousemove', mostrarBarras)
       doc.addEventListener('wheel', aoRolar, { passive: true })
+      // Deslizar o dedo vira a página (o foliate cuida); a posição nova é sua.
+      doc.addEventListener('touchstart', marcarComando, { passive: true })
       doc.addEventListener('click', aoClicarNoLivro)
       for (const tipo of ['dragenter', 'dragover', 'dragleave', 'drop']) doc.addEventListener(tipo, repassarArrasto)
     }
@@ -362,7 +436,13 @@ export function TelaLeitor({
         setSumario(elemento.book.toc ?? [])
         aplicarAparencia()
         await voltarParaOndeParou(elemento, livro.posicao)
-        if (ativo) setEstado('pronto')
+        if (!ativo) return
+        textoPronto.current = true
+        setEstado('pronto')
+        // Chegou uma posição mais nova de outro aparelho enquanto o livro abria: vai para ela.
+        const chegou = posicaoQueChegou.current
+        posicaoQueChegou.current = null
+        if (chegou) void irParaAPosicaoQueChegou(chegou)
       } catch (erro) {
         console.error(erro)
         if (!ativo) return
@@ -386,10 +466,12 @@ export function TelaLeitor({
     // O livro abre uma vez por id; aparência e teclas são aplicadas pelos efeitos abaixo.
   }, [livro.id])
 
-  // Ao sair do leitor (ou fechar a janela), a última posição é gravada na hora.
+  // Ao sair do leitor (ou fechar a janela), a posição que ainda ia ser gravada é gravada na hora.
   useEffect(() => {
     const aoFecharJanela = () => {
-      if (ultimaPosicao.current) api.leitura.salvarPosicaoAgora(livro.id, ultimaPosicao.current)
+      if (salvamento.current !== undefined && ultimaPosicao.current) {
+        api.leitura.salvarPosicaoAgora(livro.id, ultimaPosicao.current)
+      }
     }
     window.addEventListener('beforeunload', aoFecharJanela)
     return () => {
@@ -417,9 +499,9 @@ export function TelaLeitor({
   }, [livro.titulo, mostrarBarras])
 
   const aoMudarPaginaOriginal = useCallback(
-    (numero: number, rotulo: string, total: number) => {
+    (numero: number, rotulo: string, total: number, pelaPessoa: boolean) => {
       setOndeNoOriginal({ numero, rotulo, total })
-      if (modoAtual.current !== 'original') return
+      if (!pelaPessoa || modoAtual.current !== 'original') return
       guardarPosicao({
         href: livro.arquivoOriginal,
         type: 'application/pdf',
@@ -537,7 +619,18 @@ export function TelaLeitor({
         )}
       </header>
 
-      <div className="leitor-livro" ref={host} data-oculto={noOriginal || undefined} onWheel={e => aoRolar(e.nativeEvent)} />
+      <div
+        className="leitor-livro"
+        ref={host}
+        data-oculto={noOriginal || undefined}
+        onWheel={e => aoRolar(e.nativeEvent)}
+        // Arrastar a barra de rolagem do texto também é você mexendo.
+        onPointerDown={marcarComando}
+      />
+
+      <p className="leitor-recado" role="status" data-visivel={recado ? '' : undefined}>
+        {recado}
+      </p>
 
       {noOriginal && (
         <div className="leitor-original">
@@ -629,6 +722,7 @@ export function TelaLeitor({
           aoIr={href => {
             setPainel(null)
             if (noOriginal) mudarModo('texto', false)
+            marcarComando()
             void visao.current?.goTo(href)
           }}
         />

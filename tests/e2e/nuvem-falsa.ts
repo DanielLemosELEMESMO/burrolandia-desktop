@@ -105,6 +105,8 @@ export async function abrirNuvemFalsa() {
   const acessos = new Map<string, Conta>()
   const renovacoes = new Map<string, Conta>()
   const pedidos: string[] = []
+  /** Uma rede lenta para "o que mudou" (os testes ligam e desligam). */
+  const lentidao = { mudancas: 0 }
 
   const sessao = (conta: Conta) => {
     const expiraEm = Math.floor(Date.now() / 1000) + 3600
@@ -184,13 +186,14 @@ export async function abrirNuvemFalsa() {
                 .map(linha),
             )
           case 'livros_desde':
+            if (lentidao.mudancas) await new Promise(pronto => setTimeout(pronto, lentidao.mudancas))
             return json(res, 200, nuvem._mudancas(conta.id, argumentos.desde ?? null, argumentos.depois_de ?? null, argumentos.limite ?? 500).map(linha))
           case 'uso_da_nuvem': {
             const livros = nuvem.livrosDe(conta.id).filter(l => !l.removidoEm)
             const bytes = [...nuvem.arquivos.entries()]
               .filter(([chave]) => chave.split('/')[1] === conta.id)
               .reduce((soma, [, a]) => soma + a.bytes.length, 0)
-            return json(res, 200, { livros: livros.length, arquivos: livros.filter(l => l.arquivo).length, bytes })
+            return json(res, 200, { livros: livros.length, arquivos: livros.filter(l => l.arquivo).length, bytes, limite: nuvem.limitePorConta })
           }
         }
         return json(res, 404, { code: 'PGRST202', message: 'função não existe' })
@@ -240,6 +243,7 @@ export async function abrirNuvemFalsa() {
     url: `http://127.0.0.1:${port}`,
     nuvem,
     pedidos,
+    lentidao,
     fechar: () => new Promise<void>(fechado => servidor.close(() => fechado())),
   }
 }
