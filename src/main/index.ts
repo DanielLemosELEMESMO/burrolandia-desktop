@@ -54,7 +54,7 @@ function clienteDoCatalogo(): ClienteOpenLibrary | null {
   return new ClienteOpenLibrary(
     (url, init) => net.fetch(url, init),
     falso ? { openLibrary: falso, capas: falso } : ENDERECOS_DO_OPEN_LIBRARY,
-    falso ? 0 : 300,
+    falso ? 0 : undefined,
   )
 }
 
@@ -153,7 +153,9 @@ if (!app.requestSingleInstanceLock()) {
     const bancoAberto = banco
     void biblioteca.limparPastasOrfas()
     const catalogo = new Catalogo(banco, biblioteca, clienteDoCatalogo(), livroId => {
-      for (const janela of BrowserWindow.getAllWindows()) janela.webContents.send('catalogo:mudou', livroId)
+      for (const janela of BrowserWindow.getAllWindows()) {
+        if (!janela.isDestroyed() && !janela.webContents.isDestroyed()) janela.webContents.send('catalogo:mudou', livroId)
+      }
     })
 
     tratarProtocolo(biblioteca, pastaInterface)

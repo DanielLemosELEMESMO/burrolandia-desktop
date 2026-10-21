@@ -33,7 +33,7 @@ const api: ApiBurrolandia = {
   },
   catalogo: {
     sobre: id => ipcRenderer.invoke('catalogo:sobre', id),
-    reconhecer: (id, deNovo) => ipcRenderer.invoke('catalogo:reconhecer', id, deNovo === true),
+    reconhecer: id => ipcRenderer.invoke('catalogo:reconhecer', id),
     buscar: texto => ipcRenderer.invoke('catalogo:buscar', texto),
     edicoes: id => ipcRenderer.invoke('catalogo:edicoes', id),
     escolherObra: (id, obraId) => ipcRenderer.invoke('catalogo:escolher-obra', id, obraId),

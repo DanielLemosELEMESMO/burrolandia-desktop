@@ -89,6 +89,29 @@ export function epubMemoriasPostumas() {
   })
 }
 
+/** Dom Casmurro com uma capa JPEG (para ver a troca pela capa do catálogo, que é outra imagem). */
+export function epubDomCasmurroComCapa(capa: Uint8Array) {
+  return escreverEpub({
+    identificador: 'urn:uuid:5a0c3f2e-1b4d-4c6e-9a51-000000000003',
+    titulo: 'Dom Casmurro',
+    autores: ['Machado de Assis'],
+    idioma: 'pt-BR',
+    capa: { bytes: capa, tipo: 'image/jpeg' },
+    capitulos: DOM_CASMURRO.slice(0, 1),
+  })
+}
+
+/** Um livro com outra obra no catálogo, para os testes de mais de um livro. */
+export function epubOrigemDasEspecies() {
+  return escreverEpub({
+    identificador: 'urn:uuid:5a0c3f2e-1b4d-4c6e-9a51-000000000004',
+    titulo: 'A Origem das Espécies',
+    autores: ['Charles Darwin'],
+    idioma: 'pt-BR',
+    capitulos: [capitulo('I. Variação sob domesticação', 'Um capítulo curto, escrito para os testes.')],
+  })
+}
+
 /** Grava os livros de teste numa pasta e devolve os caminhos. */
 export function gravarLivrosDeTeste(pasta: string) {
   mkdirSync(pasta, { recursive: true })

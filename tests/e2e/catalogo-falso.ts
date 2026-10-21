@@ -26,10 +26,17 @@ function responder(url: URL): { status: number; tipo: string; corpo: Buffer | st
 
 export async function abrirCatalogoFalso() {
   const pedidos: string[] = []
-  const servidor = createServer((req, res) => {
+  /** Para os testes mexerem: o catálogo fora do ar (503) e a demora das buscas, em ms. */
+  const estado = { foraDoAr: false, demoraDaBusca: 0 }
+  const servidor = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
     pedidos.push(url.pathname + url.search)
-    const { status, tipo, corpo } = responder(url)
+    if (url.pathname === '/search.json' && estado.demoraDaBusca) {
+      await new Promise(pronto => setTimeout(pronto, estado.demoraDaBusca))
+    }
+    const { status, tipo, corpo } = estado.foraDoAr
+      ? { status: 503, tipo: 'text/plain', corpo: 'fora do ar' }
+      : responder(url)
     res.writeHead(status, { 'Content-Type': tipo })
     res.end(corpo)
   })
@@ -38,6 +45,7 @@ export async function abrirCatalogoFalso() {
   return {
     url: `http://127.0.0.1:${port}`,
     pedidos,
+    estado,
     fechar: () => new Promise<void>(fechado => servidor.close(() => fechado())),
   }
 }

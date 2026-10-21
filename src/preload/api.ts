@@ -2,6 +2,7 @@
 
 import type {
   AndamentoImportacao,
+  CapaDoCatalogo,
   Edicao,
   Livro,
   Locator,
@@ -41,9 +42,10 @@ export interface ApiBurrolandia {
   }
   /** O catálogo (Open Library): a obra e a edição de cada livro. */
   catalogo: {
+    /** O que já se sabe do livro; a descrição da obra, se faltar, chega depois por aoMudar. */
     sobre(id: string): Promise<SobreLivro | null>
-    /** Procura a obra do livro (se ainda pendente, ou de novo). Sem conexão, volta ainda pendente. */
-    reconhecer(id: string, deNovo?: boolean): Promise<SobreLivro | null>
+    /** Procura a obra do livro, se ainda pendente (o que a pessoa escolheu fica). Sem conexão, volta pendente. */
+    reconhecer(id: string): Promise<SobreLivro | null>
     /** null: sem conexão com o catálogo. */
     buscar(texto: string): Promise<ObraEncontrada[] | null>
     /** As edições da obra do livro, primeiro as do idioma dele. null: sem conexão. */
@@ -51,8 +53,8 @@ export interface ApiBurrolandia {
     escolherObra(id: string, obraId: string): Promise<SobreLivro | null>
     escolherEdicao(id: string, edicaoId: string): Promise<SobreLivro | null>
     nenhuma(id: string): Promise<SobreLivro | null>
-    /** A imagem da capa do catálogo, para ver antes de trocar. */
-    capa(id: string): Promise<Uint8Array | null>
+    /** A imagem da capa do catálogo, para ver antes de trocar, e se ela já é a capa do livro. */
+    capa(id: string): Promise<CapaDoCatalogo | null>
     usarCapa(id: string): Promise<SobreLivro | null>
     /** Avisa quando o catálogo muda um livro (reconheceu, trocou a capa…). */
     aoMudar(quando: (livroId: string) => void): () => void

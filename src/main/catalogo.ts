@@ -4,18 +4,28 @@
 // Sem internet, o livro continua "pendente" e é procurado de novo na próxima abertura do app.
 
 import { ClienteOpenLibrary, SemConexao } from '@nucleo/catalogo/cliente'
-import { consultaDeTexto, escolherObra, ordenarEdicoes } from '@nucleo/catalogo/correspondencia'
+import { consultasDeTexto, escolherObra, isbnConfere, ordenarEdicoes } from '@nucleo/catalogo/correspondencia'
 import { paraIsbn13 } from '@nucleo/catalogo/isbn'
-import type { Edicao, Livro, ObraEncontrada, Reconhecimento, SobreLivro } from '@nucleo/tipos'
+import type { CapaDoCatalogo, Edicao, ObraEncontrada, Reconhecimento, SobreLivro } from '@nucleo/tipos'
 import type { Banco } from './banco'
-import type { Biblioteca } from './biblioteca'
+import { nomeDaCapa, type Biblioteca } from './biblioteca'
+
+const MAXIMO_NA_MEMORIA = 500
+const MAXIMO_DE_CAPAS_NA_MEMORIA = 30
+
+/** Guarda no mapa, esquecendo o mais antigo quando passa do máximo. */
+function guardar<V>(mapa: Map<string | number, V>, chave: string | number, valor: V, maximo: number) {
+  mapa.delete(chave)
+  mapa.set(chave, valor)
+  if (mapa.size > maximo) mapa.delete(mapa.keys().next().value!)
+}
 
 export class Catalogo {
   /** As últimas obras achadas e edições listadas, para escolher sem perguntar de novo ao catálogo. */
-  readonly #obrasVistas = new Map<string, ObraEncontrada>()
-  readonly #edicoesVistas = new Map<string, Edicao>()
+  readonly #obrasVistas = new Map<string | number, ObraEncontrada>()
+  readonly #edicoesVistas = new Map<string | number, Edicao>()
   readonly #emAndamento = new Map<string, Promise<SobreLivro | null>>()
-  readonly #capas = new Map<number, Uint8Array>()
+  readonly #capas = new Map<string | number, Uint8Array>()
 
   constructor(
     private readonly banco: Banco,
@@ -35,27 +45,28 @@ export class Catalogo {
     }
   }
 
-  /** O "Sobre este livro", buscando a descrição da obra se ela ainda não veio. */
-  async sobreCompleto(livroId: string): Promise<SobreLivro | null> {
-    const sobre = this.sobre(livroId)
-    if (sobre?.obra && sobre.obra.descricao === null && this.cliente) {
-      const detalhes = await this.cliente.detalhesDaObra(sobre.obra.id).catch(() => null)
-      if (detalhes) {
-        this.banco.salvarObra({ ...sobre.obra, ...detalhes, assuntos: detalhes.assuntos.length ? detalhes.assuntos : sobre.obra.assuntos })
-        return this.sobre(livroId)
-      }
-    }
-    return sobre
+  /**
+   * Busca a descrição da obra se ela ainda não veio (o painel mostra o que já tem enquanto isso).
+   * Avisa quem estiver olhando quando chegar.
+   */
+  async completarDescricao(livroId: string) {
+    const obra = this.sobre(livroId)?.obra
+    if (!obra || obra.descricao !== null || !this.cliente) return
+    const detalhes = await this.cliente.detalhesDaObra(obra.id).catch(() => null)
+    if (!detalhes) return
+    this.banco.salvarObra({ ...obra, ...detalhes, assuntos: detalhes.assuntos.length ? detalhes.assuntos : obra.assuntos })
+    this.aoMudar(livroId)
   }
 
   /**
-   * Procura a obra do livro no catálogo. Só procura livros pendentes (ou se pedirem de novo); sem
-   * conexão, devolve o livro ainda pendente. Dois pedidos para o mesmo livro viram um só.
+   * Procura a obra do livro no catálogo. Só procura livros pendentes: o que a pessoa escolheu ou
+   * recusou fica como está. Sem conexão, devolve o livro ainda pendente. Dois pedidos para o mesmo
+   * livro viram um só.
    */
-  reconhecer(livroId: string, { deNovo = false } = {}): Promise<SobreLivro | null> {
+  reconhecer(livroId: string): Promise<SobreLivro | null> {
     const andamento = this.#emAndamento.get(livroId)
     if (andamento) return andamento
-    const tarefa = this.#reconhecer(livroId, deNovo)
+    const tarefa = this.#reconhecer(livroId)
       .catch(erro => {
         if (erro instanceof SemConexao) return this.sobre(livroId)
         throw erro
@@ -66,9 +77,9 @@ export class Catalogo {
   }
 
   /**
-   * Procura os livros pendentes, um por um (pelo mesmo caminho dos pedidos da interface, para não
-   * procurar o mesmo livro duas vezes). Se um continua pendente, está sem conexão: para e tenta na
-   * próxima abertura do app.
+   * Procura os livros pendentes, um por um, dos mais novos aos mais velhos (pelo mesmo caminho dos
+   * pedidos da interface, para não procurar o mesmo livro duas vezes). Se um continua pendente, está
+   * sem conexão: para e tenta na próxima abertura do app.
    */
   async reconhecerPendentes() {
     for (const id of this.banco.livrosPendentes()) {
@@ -80,26 +91,30 @@ export class Catalogo {
     }
   }
 
-  async #reconhecer(livroId: string, deNovo: boolean): Promise<SobreLivro | null> {
+  async #reconhecer(livroId: string): Promise<SobreLivro | null> {
     const livro = this.banco.obterLivro(livroId)
-    if (!livro || !this.cliente || (!deNovo && livro.reconhecimento !== 'pendente')) return this.sobre(livroId)
+    if (!livro || !this.cliente || livro.reconhecimento !== 'pendente') return this.sobre(livroId)
+    const alvo = { titulo: livro.titulo, autores: livro.autores }
 
     for (const isbn of livro.identificadores.isbn.flatMap(i => paraIsbn13(i) ?? [])) {
       const achada = await this.cliente.porIsbn(isbn)
-      if (achada?.edicao) return this.#ligar(livro, achada, 'isbn')
+      // Um PDF também traz os ISBNs dos livros que cita: só vale se o título ou o autor conferem.
+      if (achada?.edicao && isbnConfere(alvo, achada)) return this.#ligar(livro.id, achada, 'isbn')
     }
 
-    const alvo = { titulo: livro.titulo, autores: livro.autores }
-    const achada = escolherObra(alvo, await this.cliente.porTexto(consultaDeTexto(alvo)))
-    // Achada pelo título, a edição que bateu na busca não é necessariamente a sua.
-    if (achada) return this.#ligar(livro, { obra: achada.obra, edicao: null }, 'titulo')
+    // Sem autor que valha, nenhuma busca: o título sozinho não basta (e pode ser o nome do arquivo).
+    for (const consulta of consultasDeTexto(alvo)) {
+      const achada = escolherObra(alvo, await this.cliente.porTexto(consulta))
+      // Achada pelo título, a edição que bateu na busca não é necessariamente a sua.
+      if (achada) return this.#ligar(livro.id, { obra: achada.obra, edicao: null }, 'titulo')
+    }
 
     this.banco.ligarAoCatalogo(livro.id, { obraId: null, edicaoId: null, reconhecimento: 'sem-resultado' })
     this.aoMudar(livro.id)
     return this.sobre(livro.id)
   }
 
-  async #ligar(livro: Livro, { obra, edicao }: ObraEncontrada, reconhecimento: Reconhecimento) {
+  async #ligar(livroId: string, { obra, edicao }: ObraEncontrada, reconhecimento: Reconhecimento) {
     const detalhes = obra.descricao === null ? await this.cliente?.detalhesDaObra(obra.id).catch(() => null) : null
     this.banco.salvarObra({
       ...obra,
@@ -107,31 +122,41 @@ export class Catalogo {
       assuntos: detalhes?.assuntos.length ? detalhes.assuntos : obra.assuntos,
     })
     if (edicao) this.banco.salvarEdicao(edicao)
-    this.banco.ligarAoCatalogo(livro.id, { obraId: obra.id, edicaoId: edicao?.id ?? null, reconhecimento })
-    if (!livro.capa) await this.#baixarCapa(livro.id, edicao?.capaId ?? obra.capaId)
-    this.aoMudar(livro.id)
-    return this.sobre(livro.id)
+    this.banco.ligarAoCatalogo(livroId, { obraId: obra.id, edicaoId: edicao?.id ?? null, reconhecimento })
+    await this.#baixarCapa(livroId, edicao?.capaId ?? obra.capaId, { soSemCapa: true })
+    this.aoMudar(livroId)
+    return this.sobre(livroId)
   }
 
-  /** A imagem da capa no catálogo, baixada uma vez por sessão. */
+  /** A imagem da capa no catálogo, baixada uma vez por sessão. O que não é imagem fica de fora. */
   async #imagemDaCapa(capaId: number | null): Promise<Uint8Array | null> {
     if (!capaId || !this.cliente) return null
     const guardada = this.#capas.get(capaId)
     if (guardada) return guardada
     const imagem = await this.cliente.capa(capaId).catch(() => null)
-    if (imagem) this.#capas.set(capaId, imagem)
+    if (!imagem || !nomeDaCapa(imagem)) return null
+    guardar(this.#capas, capaId, imagem, MAXIMO_DE_CAPAS_NA_MEMORIA)
     return imagem
   }
 
-  async #baixarCapa(livroId: string, capaId: number | null) {
+  /** soSemCapa: a capa do catálogo só entra se o livro ainda não tiver uma (conferido até o fim). */
+  async #baixarCapa(livroId: string, capaId: number | null, { soSemCapa = false } = {}) {
+    const temCapa = () => soSemCapa && Boolean(this.banco.obterLivro(livroId)?.capa)
+    if (temCapa()) return
     const imagem = await this.#imagemDaCapa(capaId)
-    if (imagem) await this.biblioteca.salvarCapa(livroId, imagem)
+    if (imagem && !temCapa()) await this.biblioteca.salvarCapa(livroId, imagem)
   }
 
-  /** A capa do catálogo (a da sua edição, ou a da obra), para ver antes de usar. */
-  async capaDoCatalogo(livroId: string): Promise<Uint8Array | null> {
+  #capaId(livroId: string) {
     const sobre = this.sobre(livroId)
-    return this.#imagemDaCapa(sobre?.edicao?.capaId ?? sobre?.obra?.capaId ?? null)
+    return sobre?.edicao?.capaId ?? sobre?.obra?.capaId ?? null
+  }
+
+  /** A capa do catálogo (a da sua edição, ou a da obra), para ver antes de usar; e se já é a do livro. */
+  async capaDoCatalogo(livroId: string): Promise<CapaDoCatalogo | null> {
+    const imagem = await this.#imagemDaCapa(this.#capaId(livroId))
+    if (!imagem) return null
+    return { imagem, emUso: this.banco.obterLivro(livroId)?.capa === nomeDaCapa(imagem) }
   }
 
   /** Busca livre, para quando a obra não foi reconhecida (ou não é a certa). null: sem conexão. */
@@ -139,7 +164,7 @@ export class Catalogo {
     if (!this.cliente) return null
     try {
       const achadas = await this.cliente.porTexto(texto)
-      for (const achada of achadas) this.#obrasVistas.set(achada.obra.id, achada)
+      for (const achada of achadas) guardar(this.#obrasVistas, achada.obra.id, achada, MAXIMO_NA_MEMORIA)
       return achadas
     } catch (erro) {
       if (erro instanceof SemConexao) return null
@@ -148,11 +173,10 @@ export class Catalogo {
   }
 
   async escolherObra(livroId: string, obraId: string): Promise<SobreLivro | null> {
-    const livro = this.banco.obterLivro(livroId)
-    if (!livro) return null
+    if (!this.banco.obterLivro(livroId)) return null
     const achada = this.#obrasVistas.get(obraId) ?? (await this.cliente?.obra(obraId).catch(() => null))
     if (!achada) return this.sobre(livroId)
-    return this.#ligar(livro, { obra: achada.obra, edicao: null }, 'escolhido')
+    return this.#ligar(livroId, { obra: achada.obra, edicao: null }, 'escolhido')
   }
 
   /** As edições da obra do livro, primeiro as do idioma dele. null: sem conexão. */
@@ -161,7 +185,7 @@ export class Catalogo {
     if (!livro?.obraId || !this.cliente) return livro?.obraId ? null : []
     try {
       const edicoes = ordenarEdicoes(await this.cliente.edicoes(livro.obraId), livro.idioma)
-      for (const edicao of edicoes) this.#edicoesVistas.set(edicao.id, edicao)
+      for (const edicao of edicoes) guardar(this.#edicoesVistas, edicao.id, edicao, MAXIMO_NA_MEMORIA)
       return edicoes
     } catch (erro) {
       if (erro instanceof SemConexao) return null
@@ -173,7 +197,8 @@ export class Catalogo {
     const livro = this.banco.obterLivro(livroId)
     if (!livro?.obraId) return this.sobre(livroId)
     const edicao = this.#edicoesVistas.get(edicaoId) ?? (await this.cliente?.edicao(edicaoId).catch(() => null))
-    if (!edicao) return this.sobre(livroId)
+    // Só uma edição da obra do livro: a lista na tela pode ser de outro livro, ou de outra obra.
+    if (!edicao || edicao.obraId !== livro.obraId) return this.sobre(livroId)
     this.banco.salvarEdicao(edicao)
     this.banco.ligarAoCatalogo(livroId, { obraId: livro.obraId, edicaoId, reconhecimento: 'escolhido' })
     this.aoMudar(livroId)
@@ -190,8 +215,7 @@ export class Catalogo {
 
   /** Troca a capa do livro pela do catálogo (a da sua edição, ou a da obra). */
   async usarCapaDoCatalogo(livroId: string): Promise<SobreLivro | null> {
-    const sobre = this.sobre(livroId)
-    await this.#baixarCapa(livroId, sobre?.edicao?.capaId ?? sobre?.obra?.capaId ?? null)
+    await this.#baixarCapa(livroId, this.#capaId(livroId))
     this.aoMudar(livroId)
     return this.sobre(livroId)
   }

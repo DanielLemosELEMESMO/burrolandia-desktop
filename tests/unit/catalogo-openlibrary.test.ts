@@ -39,6 +39,20 @@ describe('lerBusca', () => {
     })
   })
 
+  it('junta o subtítulo ao título, sem repetir, e tira os caracteres de controle dos catálogos', () => {
+    const [sapiens] = lerBusca(resposta('busca-sapiens.json'))
+    expect(sapiens.edicao?.titulo).toBe('Sapiens: uma breve história da humanidade')
+    const senhor = lerBusca(resposta('busca-senhor-dos-aneis.json')).find(a => a.obra.id === 'OL46050132W')
+    expect(senhor?.obra.titulo).toBe('O senhor dos anéis')
+    expect(senhor?.edicao?.titulo).toBe('O senhor dos anéis: romance')
+    // Título que já tem subtítulo não ganha o outro, que é só a série.
+    const [sociedade] = lerBusca(resposta('busca-senhor-dos-aneis-sociedade.json'))
+    expect(sociedade.edicao?.titulo).toBe('O Senhor dos Anéis: A Sociedade do Anel')
+    expect(lerEdicao({ key: '/books/OL1M', works: [{ key: '/works/OL1W' }], title: 'Sapiens: uma breve história', subtitle: 'Uma breve história' })?.titulo).toBe(
+      'Sapiens: uma breve história',
+    )
+  })
+
   it('pula registros incompletos ou de outro tipo, sem quebrar', () => {
     expect(lerBusca({ docs: [{ key: '/works/OL1W' }, null, { title: 'Sem chave' }, { key: '/authors/OL1A', title: 'Autor' }] })).toEqual([])
     expect(lerBusca('não é JSON de busca')).toEqual([])

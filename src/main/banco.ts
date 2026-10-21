@@ -291,7 +291,7 @@ export class Banco {
   /** Os livros que ainda não foram procurados no catálogo (ou que estavam sem internet). */
   livrosPendentes(): string[] {
     const linhas = this.#db
-      .prepare("SELECT id FROM livros WHERE reconhecimento = 'pendente' ORDER BY adicionado_em")
+      .prepare("SELECT id FROM livros WHERE reconhecimento = 'pendente' ORDER BY adicionado_em DESC")
       .all() as { id: string }[]
     return linhas.map(l => l.id)
   }

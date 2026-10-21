@@ -103,10 +103,13 @@ export function registrarIpc(
   ipcMain.handle('sessao:ler', () => lerSessao(banco, biblioteca))
 
   // Catálogo (etapa 3): só ids, ids do Open Library e textos curtos passam.
-  ipcMain.handle('catalogo:sobre', (_, id: unknown) => (idValido(id) ? catalogo.sobreCompleto(id) : null))
-  ipcMain.handle('catalogo:reconhecer', (_, id: unknown, deNovo: unknown) =>
-    idValido(id) ? catalogo.reconhecer(id, { deNovo: deNovo === true }) : null,
-  )
+  ipcMain.handle('catalogo:sobre', (_, id: unknown) => {
+    if (!idValido(id)) return null
+    // O que já se sabe vai na hora; a descrição da obra, se faltar, chega depois (catalogo:mudou).
+    catalogo.completarDescricao(id).catch(erro => console.warn('Não deu para buscar a descrição da obra', erro))
+    return catalogo.sobre(id)
+  })
+  ipcMain.handle('catalogo:reconhecer', (_, id: unknown) => (idValido(id) ? catalogo.reconhecer(id) : null))
   ipcMain.handle('catalogo:buscar', (_, texto: unknown) => (buscaValida(texto) ? catalogo.buscarObras(texto.trim()) : []))
   ipcMain.handle('catalogo:edicoes', (_, id: unknown) => (idValido(id) ? catalogo.edicoes(id) : []))
   ipcMain.handle('catalogo:escolher-obra', (_, id: unknown, obraId: unknown) =>

@@ -88,7 +88,9 @@ export function TelaBiblioteca({
   const [ordem, setOrdem] = useState<Ordem>(() => lembrado('ordem', ORDENS.map(o => o.valor), 'recentes'))
   const [vista, setVista] = useState<Vista>(() => lembrado('vista', ['grade', 'lista'] as const, 'grade'))
   const [removendo, setRemovendo] = useState<Livro | null>(null)
-  const [sobre, setSobre] = useState<string | null>(null)
+  // Um painel "Sobre este livro" por livro (key): a resposta atrasada de um não cai no de outro.
+  // Fechado, continua montado até abrir outro livro, para o foco voltar a quem abriu.
+  const [sobre, setSobre] = useState<{ livroId: string; aberto: boolean } | null>(null)
   const campoDeBusca = useRef<HTMLInputElement>(null)
   const visiveis = organizarLivros(livros, { busca, ordem, formato })
 
@@ -132,7 +134,7 @@ export function TelaBiblioteca({
     <MenuDeAcoes
       rotulo={`Mais ações para ${livro.titulo}`}
       acoes={[
-        { rotulo: 'Sobre este livro', aoEscolher: () => setSobre(livro.id) },
+        { rotulo: 'Sobre este livro', aoEscolher: () => setSobre({ livroId: livro.id, aberto: true }) },
         { rotulo: 'Remover da biblioteca', perigosa: true, aoEscolher: () => setRemovendo(livro) },
       ]}
     />
@@ -282,7 +284,11 @@ export function TelaBiblioteca({
         )}
       </main>
 
-      <SobreLivro livroId={sobre} aoFechar={() => setSobre(null)} />
+      <SobreLivro
+        key={sobre?.livroId ?? 'nenhum'}
+        livroId={sobre?.aberto ? sobre.livroId : null}
+        aoFechar={() => setSobre(atual => atual && { ...atual, aberto: false })}
+      />
 
       <Dialogo aberto={!!removendo} titulo="Remover este livro?" aoFechar={() => setRemovendo(null)} alerta>
         {removendo && (

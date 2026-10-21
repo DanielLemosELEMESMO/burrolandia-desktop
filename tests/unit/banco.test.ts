@@ -160,12 +160,13 @@ describe('Banco: catálogo (etapa 3)', () => {
     expect(banco.obterObra(obra.id)).toMatchObject({ edicoes: 91, descricao: 'Publicado pela primeira vez em 1899.' })
   })
 
-  it('lista os livros que ainda não foram procurados no catálogo', () => {
-    const pendente = banco.inserirLivro(novoLivro())
+  it('lista os livros que ainda não foram procurados no catálogo, dos mais novos aos mais velhos', () => {
+    const velho = banco.inserirLivro(novoLivro({ adicionadoEm: '2026-10-01T00:00:00.000Z' }))
+    const novo = banco.inserirLivro(novoLivro({ adicionadoEm: '2026-10-19T00:00:00.000Z' }))
     const achado = banco.inserirLivro(novoLivro())
     banco.salvarObra(obra)
     banco.ligarAoCatalogo(achado.id, { obraId: obra.id, edicaoId: null, reconhecimento: 'titulo' })
-    expect(banco.livrosPendentes()).toEqual([pendente.id])
+    expect(banco.livrosPendentes()).toEqual([novo.id, velho.id])
   })
 
   it('um banco da versão anterior ganha o catálogo, com os livros pendentes', () => {

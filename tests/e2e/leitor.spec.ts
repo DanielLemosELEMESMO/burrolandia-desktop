@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { gravarLivrosDeTeste } from '../fixtures/livros'
 import type { ApiBurrolandia } from '../../src/preload/api'
-import { abrirApp, escolherArquivo, novaPastaDeDados } from './app'
+import { abrirApp, escolherArquivo, novaPastaDeDados, posicaoParada } from './app'
 
 /** As faixas do leitor somem enquanto você lê; mexer o mouse traz de volta. */
 async function mostrarFaixas(janela: Page) {
@@ -50,7 +50,7 @@ test('sair do leitor pelo dock grava a posição na hora, sem esperar o salvamen
 
   await janela.keyboard.press('ArrowRight')
   await expect(leitor).not.toHaveAttribute('data-cfi', inicio!)
-  const parou = await leitor.getAttribute('data-cfi')
+  const parou = await posicaoParada(janela, leitor)
   await mostrarFaixas(janela)
   await janela.getByRole('navigation', { name: 'Navegação principal' }).getByRole('button', { name: 'Biblioteca', exact: true }).click()
   await expect(janela.getByRole('main', { name: 'Biblioteca' })).toBeVisible()

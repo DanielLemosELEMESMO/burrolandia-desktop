@@ -3,7 +3,7 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 
 const raiz = resolve(__dirname, '../..')
 
@@ -39,6 +39,21 @@ export async function escolherArquivo(app: ElectronApplication, caminho: string)
   await app.evaluate(({ dialog }, arquivo) => {
     dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [arquivo] })) as typeof dialog.showOpenDialog
   }, caminho)
+}
+
+/**
+ * A posição do leitor depois que ela para de mudar. Ao virar a página, o foliate pode avisar uma
+ * posição de passagem antes da final; ler logo a primeira mudança pega a de passagem.
+ */
+export async function posicaoParada(janela: Page, leitor: Locator) {
+  let anterior = await leitor.getAttribute('data-cfi')
+  for (let tentativa = 0; tentativa < 20; tentativa++) {
+    await janela.waitForTimeout(250)
+    const atual = await leitor.getAttribute('data-cfi')
+    if (atual === anterior) return atual
+    anterior = atual
+  }
+  throw new Error('A posição do leitor não parou de mudar')
 }
 
 /** Vai a uma tela pelo dock (a navegação principal). */

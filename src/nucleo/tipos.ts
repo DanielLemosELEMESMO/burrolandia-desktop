@@ -119,6 +119,12 @@ export interface ObraEncontrada {
   edicao: Edicao | null
 }
 
+/** A capa do catálogo para ver antes de usar, e se ela já é a capa do livro. */
+export interface CapaDoCatalogo {
+  imagem: Uint8Array
+  emUso: boolean
+}
+
 export type Tema = 'automatico' | 'papel' | 'sepia' | 'noite'
 
 /** O tema que de fato aparece: "automático" vira papel ou noite, conforme o sistema. */

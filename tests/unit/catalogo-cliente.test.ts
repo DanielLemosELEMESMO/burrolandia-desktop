@@ -66,6 +66,75 @@ describe('ClienteOpenLibrary', () => {
     expect(await inexistente.edicao('OL1M')).toBeNull()
   })
 
+  it('quando o catálogo pede calma, espera o Retry-After sem nem perguntar', async () => {
+    let agora = 1_000_000
+    /** Um catálogo que responde sempre o mesmo status, e conta quantas vezes foi perguntado. */
+    const respondendo = (status: number, retryAfter?: string) => {
+      const contagem = { pedidos: 0 }
+      const cliente = new ClienteOpenLibrary(
+        async () => {
+          contagem.pedidos++
+          return { ...resposta({}, status), headers: new Headers(retryAfter ? { 'Retry-After': retryAfter } : {}) }
+        },
+        enderecos,
+        0,
+        () => agora,
+      )
+      return { cliente, contagem }
+    }
+    const tentar = (cliente: ClienteOpenLibrary) => expect(cliente.porTexto('Dom Casmurro')).rejects.toBeInstanceOf(SemConexao)
+
+    // Pedidos demais (429), com Retry-After: espera o tempo pedido.
+    const comPrazo = respondendo(429, '120')
+    await tentar(comPrazo.cliente)
+    agora += 119_000
+    await tentar(comPrazo.cliente)
+    expect(comPrazo.contagem.pedidos).toBe(1)
+    agora += 2_000
+    await tentar(comPrazo.cliente)
+    expect(comPrazo.contagem.pedidos).toBe(2)
+
+    // Pedidos demais sem dizer quanto: um minuto.
+    const semPrazo = respondendo(429)
+    await tentar(semPrazo.cliente)
+    agora += 59_000
+    await tentar(semPrazo.cliente)
+    expect(semPrazo.contagem.pedidos).toBe(1)
+
+    // Fora do ar (503): só espera se pedir; senão, a próxima tentativa pergunta de novo.
+    const foraComPrazo = respondendo(503, '30')
+    await tentar(foraComPrazo.cliente)
+    agora += 29_000
+    await tentar(foraComPrazo.cliente)
+    expect(foraComPrazo.contagem.pedidos).toBe(1)
+    const fora = respondendo(503)
+    await tentar(fora.cliente)
+    await tentar(fora.cliente)
+    expect(fora.contagem.pedidos).toBe(2)
+  })
+
+  it('a consulta que o catálogo não entende (400, 422) é como não achar, não "sem conexão"', async () => {
+    const { buscar } = catalogoFalso(() => resposta({ error: 'bad query' }, 400))
+    expect(await new ClienteOpenLibrary(buscar, enderecos, 0).porTexto('Dom Casmurro')).toEqual([])
+  })
+
+  it('tira da busca livre o que o catálogo leria como comando', async () => {
+    const { buscar, pedidos } = catalogoFalso(() => resposta({ numFound: 0, docs: [] }))
+    await new ClienteOpenLibrary(buscar, enderecos, 0).porTexto('Dom Casmurro: "romance" (1899) AND -Machado* title:x [a TO b] \\ / ~ ^ ! ?')
+    expect(pedidos[0].url.searchParams.get('q')).toBe('Dom Casmurro romance 1899 and Machado title x a TO b')
+  })
+
+  it('por padrão, no máximo uma requisição por segundo', async () => {
+    const instantes: number[] = []
+    const { buscar } = catalogoFalso(() => {
+      instantes.push(Date.now())
+      return resposta({ numFound: 0, docs: [] })
+    })
+    const cliente = new ClienteOpenLibrary(buscar, enderecos)
+    await Promise.all([cliente.porTexto('Dom Casmurro'), cliente.porTexto('Iracema')])
+    expect(instantes[1] - instantes[0]).toBeGreaterThanOrEqual(990)
+  })
+
   it('um erro não trava a fila: o pedido seguinte segue normalmente', async () => {
     let primeiro = true
     const { buscar } = catalogoFalso(() => {

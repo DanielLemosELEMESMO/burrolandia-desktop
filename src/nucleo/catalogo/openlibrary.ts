@@ -16,6 +16,7 @@ export const CAMPOS_DA_BUSCA = [
   'editions',
   'editions.key',
   'editions.title',
+  'editions.subtitle',
   'editions.publisher',
   'editions.publish_date',
   'editions.language',
@@ -32,12 +33,30 @@ type Registro = Record<string, unknown>
 const registro = (valor: unknown): Registro | null =>
   valor && typeof valor === 'object' && !Array.isArray(valor) ? (valor as Registro) : null
 const lista = (valor: unknown): unknown[] => (Array.isArray(valor) ? valor : [])
-const texto = (valor: unknown): string | null => (typeof valor === 'string' && valor.trim() ? valor.trim() : null)
+// Alguns registros trazem caracteres de controle dos catálogos de biblioteca ("\x98O \x9csenhor dos anéis").
+const texto = (valor: unknown): string | null => {
+  const limpo = typeof valor === 'string' ? valor.replace(/\p{Cc}/gu, '').trim() : ''
+  return limpo || null
+}
 const textos = (valor: unknown): string[] => lista(valor).flatMap(v => texto(v) ?? [])
 const inteiro = (valor: unknown): number | null =>
   typeof valor === 'number' && Number.isInteger(valor) && valor >= 0 ? valor : null
 // O Open Library usa -1 para "sem capa".
 const capa = (valor: unknown): number | null => (inteiro(valor) ? (valor as number) : null)
+
+const simples = (valor: string) => valor.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+
+/**
+ * O Open Library guarda o subtítulo da edição à parte; aqui ele volta para o título ("Sapiens: uma
+ * breve história da humanidade"). Se o título já tem subtítulo, o campo à parte costuma ser só a
+ * série ("O Senhor dos Anéis - Parte 1") e fica de fora.
+ */
+function comSubtitulo(titulo: unknown, subtitulo: unknown): string | null {
+  const [principal, resto] = [texto(titulo), texto(subtitulo)]
+  if (!principal || !resto) return principal
+  const jaTemSubtitulo = /[:;]|\s[-–—]\s/.test(principal)
+  return jaTemSubtitulo || simples(principal).includes(simples(resto)) ? principal : `${principal}: ${resto}`
+}
 
 const idDaObra = (chave: unknown) => texto(chave)?.match(/^\/works\/(OL\d+W)$/)?.[1] ?? null
 const idDaEdicao = (chave: unknown) => texto(chave)?.match(/^\/books\/(OL\d+M)$/)?.[1] ?? null
@@ -50,7 +69,7 @@ const isbns = (...listas: unknown[]) => [...new Set(listas.flatMap(textos).flatM
 function edicaoDaBusca(valor: unknown, obraId: string): Edicao | null {
   const e = registro(valor)
   const id = idDaEdicao(e?.key)
-  const titulo = texto(e?.title)
+  const titulo = comSubtitulo(e?.title, e?.subtitle)
   if (!e || !id || !titulo) return null
   const publicadaEm = textos(e.publish_date)[0] ?? null
   return {
@@ -94,7 +113,7 @@ export function lerBusca(resposta: unknown): ObraEncontrada[] {
 export function lerEdicao(valor: unknown, obraIdPadrao?: string): Edicao | null {
   const e = registro(valor)
   const id = idDaEdicao(e?.key)
-  const titulo = texto(e?.title)
+  const titulo = comSubtitulo(e?.title, e?.subtitle)
   const obraId = idDaObra(registro(lista(e?.works)[0])?.key) ?? obraIdPadrao ?? null
   if (!e || !id || !titulo || !obraId) return null
   const publicadaEm = texto(e.publish_date)

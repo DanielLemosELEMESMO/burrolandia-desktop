@@ -10,6 +10,7 @@ import { lerEpub } from '@nucleo/epub/ler'
 
 const pdfDeTeste = (nome: string) => new Uint8Array(readFileSync(join(__dirname, '../fixtures/pdf', nome)))
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46])
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d])
 
 const capa = strToU8('<svg xmlns="http://www.w3.org/2000/svg" width="6" height="9"/>')
 
@@ -165,8 +166,25 @@ describe('Biblioteca', () => {
     const resultado = await biblioteca.importar(arquivo('dom.pdf', pdfDeTeste('dom-casmurro-uma-coluna.pdf')))
     if (resultado.tipo !== 'adicionado') throw new Error('deveria ter adicionado')
     const livro = await biblioteca.salvarCapa(resultado.livro.id, JPEG)
-    expect(livro?.capa).toBe('capa.jpg')
-    expect(readFileSync(biblioteca.caminhoDoArquivo(resultado.livro.id, 'capa.jpg')!)).toEqual(Buffer.from(JPEG))
+    expect(livro?.capa).toMatch(/^capa-[0-9a-f]{12}\.jpg$/)
+    expect(readFileSync(biblioteca.caminhoDoArquivo(resultado.livro.id, livro!.capa!)!)).toEqual(Buffer.from(JPEG))
+  })
+
+  it('trocar a capa troca o nome do arquivo (a tela não fica com a antiga) e apaga a anterior', async () => {
+    const resultado = await biblioteca.importar(arquivo('dom.epub', epub()))
+    if (resultado.tipo !== 'adicionado') throw new Error('deveria ter adicionado')
+    const id = resultado.livro.id
+    const original = resultado.livro.capa!
+    const primeira = (await biblioteca.salvarCapa(id, JPEG))!.capa!
+    expect(primeira).not.toBe(original)
+    expect(existsSync(biblioteca.caminhoDoArquivo(id, original)!)).toBe(false)
+    const segunda = (await biblioteca.salvarCapa(id, PNG))!.capa!
+    expect(segunda).toMatch(/^capa-[0-9a-f]{12}\.png$/)
+    expect(existsSync(biblioteca.caminhoDoArquivo(id, primeira)!)).toBe(false)
+    expect(readFileSync(biblioteca.caminhoDoArquivo(id, segunda)!)).toEqual(Buffer.from(PNG))
+    // A mesma imagem de novo não muda nada.
+    expect((await biblioteca.salvarCapa(id, PNG))?.capa).toBe(segunda)
+    expect(existsSync(biblioteca.caminhoDoArquivo(id, segunda)!)).toBe(true)
   })
 
   it('recusa como capa o que não é imagem', async () => {

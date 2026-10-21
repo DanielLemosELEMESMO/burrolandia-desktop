@@ -31,6 +31,7 @@
     "src/nucleo/tipos.ts",
     "src/nucleo/tempo.ts",
     "src/nucleo/organizar.ts",
-    "src/nucleo/cores.ts"
+    "src/nucleo/cores.ts",
+    "src/nucleo/catalogo/correspondencia.ts"
   ]
 }

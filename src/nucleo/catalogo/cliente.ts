@@ -1,5 +1,6 @@
-// O cliente do Open Library: uma requisição por vez, com folga entre elas (como o catálogo pede a
-// quem não é navegador), tempo-limite, e a diferença entre "não achou" e "sem conexão".
+// O cliente do Open Library: uma requisição por vez, no máximo uma por segundo (o que o catálogo
+// pede a quem não deixa um contato), respeitando o "Retry-After" quando ele pede calma, com
+// tempo-limite, e a diferença entre "não achou" e "sem conexão".
 // Quem chama passa a função de rede: no app, a do Electron; nos testes, uma de mentira.
 
 import type { Edicao, ObraEncontrada } from '../tipos'
@@ -8,6 +9,7 @@ import { CAMPOS_DA_BUSCA, lerBusca, lerEdicao, lerEdicoes, lerObra, tamanhoDaPag
 export interface RespostaHttp {
   ok: boolean
   status: number
+  headers?: { get(nome: string): string | null }
   json(): Promise<unknown>
   arrayBuffer(): Promise<ArrayBuffer>
 }
@@ -33,16 +35,40 @@ const AGENTE = 'Burrolandia/0.1 (leitor pessoal de EPUB e PDF)'
 const TEMPO_LIMITE = 15_000
 const POR_PAGINA = 100
 const MAXIMO_DE_EDICOES = 300
+const FOLGA = 1000
+const PAUSA_PADRAO = 60_000
+const PAUSA_MAXIMA = 10 * 60_000
 
 const espera = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+/** Quanto tempo o Retry-After pede (em segundos ou como data); null se não pede nada que sirva. */
+function pausaPedida(retryAfter: string | null | undefined, agora: number): number | null {
+  const valor = retryAfter?.trim() ?? ''
+  const ms = /^\d+$/.test(valor) ? Number(valor) * 1000 : valor ? Date.parse(valor) - agora : NaN
+  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, PAUSA_MAXIMA) : null
+}
+
+// O que a busca do catálogo leria como comando: aspas, parênteses, "campo:", curingas, AND/OR/NOT.
+const COMANDOS_DA_BUSCA = /[+\-&|!(){}[\]^"~*?:\\/]/g
+
+/** A busca livre sem nada que o catálogo leia como comando (e que faz ele responder erro). */
+export const limparConsulta = (texto: string) =>
+  texto
+    .replace(COMANDOS_DA_BUSCA, ' ')
+    .replace(/\b(?:AND|OR|NOT)\b/g, operador => operador.toLowerCase())
+    .replace(/\s+/g, ' ')
+    .trim()
+
 export class ClienteOpenLibrary {
   #fila: Promise<unknown> = Promise.resolve()
+  /** Até quando não perguntar nada, porque o catálogo pediu calma. */
+  #pausadoAte = 0
 
   constructor(
     private readonly buscar: Buscar,
     private readonly enderecos: Enderecos = ENDERECOS_DO_OPEN_LIBRARY,
-    private readonly folga = 300,
+    private readonly folga = FOLGA,
+    private readonly agora: () => number = Date.now,
   ) {}
 
   /** Uma requisição por vez; um erro não trava as próximas. */
@@ -52,9 +78,10 @@ export class ClienteOpenLibrary {
     return resultado
   }
 
-  /** A resposta, ou null quando o endereço não existe (404). */
+  /** A resposta, ou null quando o endereço não existe (404) ou a consulta não serve (400, 422). */
   #pedir(url: string): Promise<RespostaHttp | null> {
     return this.#naFila(async () => {
+      if (this.agora() < this.#pausadoAte) throw new SemConexao('O Open Library pediu um tempo')
       let resposta: RespostaHttp
       try {
         resposta = await this.buscar(url, {
@@ -64,7 +91,13 @@ export class ClienteOpenLibrary {
       } catch (erro) {
         throw new SemConexao(`Sem conexão com o Open Library (${(erro as Error)?.message ?? erro})`)
       }
-      if (resposta.status === 404) return null
+      if (resposta.status === 404 || resposta.status === 400 || resposta.status === 422) return null
+      // Pedidos demais (429): espera o que ele pedir, ou um minuto. Fora do ar (503): só se pedir.
+      if (resposta.status === 429 || resposta.status === 503) {
+        const pausa = pausaPedida(resposta.headers?.get('Retry-After'), this.agora())
+        if (pausa !== null || resposta.status === 429) this.#pausadoAte = this.agora() + (pausa ?? PAUSA_PADRAO)
+        throw new SemConexao(`O Open Library pediu um tempo (${resposta.status})`)
+      }
       if (!resposta.ok) throw new SemConexao(`O Open Library respondeu ${resposta.status}`)
       return resposta
     })
@@ -91,7 +124,8 @@ export class ClienteOpenLibrary {
 
   /** Busca livre (título e autor, no idioma que for): as obras com a edição que bateu. */
   async porTexto(consulta: string, limite = 10): Promise<ObraEncontrada[]> {
-    return lerBusca(await this.#busca({ q: consulta, limit: String(limite) }))
+    const q = limparConsulta(consulta)
+    return q ? lerBusca(await this.#busca({ q, limit: String(limite) })) : []
   }
 
   /** Uma obra pelo id, com os nomes dos autores (que o registro da obra não traz). */

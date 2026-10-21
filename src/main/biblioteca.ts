@@ -52,9 +52,21 @@ const ID_VALIDO = /^[0-9a-f-]{36}$/i
 const TIPOS_DE_CAPA: [string, (b: Uint8Array) => boolean][] = [
   ['jpg', b => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
   ['png', b => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47],
-  ['webp', b => b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50],
+  ['webp', b => b[0] === 0x52 && b[1] === 0x49 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50],
 ]
 const TAMANHO_MAXIMO_DA_CAPA = 5 * 1024 * 1024
+// As capas que o app gravou: as da importação ("capa.jpg") e as trocadas ("capa-<hash>.jpg").
+const ARQUIVO_DE_CAPA = /^capa(?:-[0-9a-f]{12})?\.(?:jpg|png|webp|gif|svg|img)$/
+
+/**
+ * O nome do arquivo de uma capa, ou null se não é imagem (ou é grande demais). O nome muda junto
+ * com a imagem: trocar a capa troca o endereço, e a tela não fica mostrando a antiga.
+ */
+export function nomeDaCapa(bytes: Uint8Array): string | null {
+  const tipo = TIPOS_DE_CAPA.find(([, eh]) => eh(bytes))?.[0]
+  if (!tipo || bytes.length > TAMANHO_MAXIMO_DA_CAPA) return null
+  return `capa-${createHash('sha256').update(bytes).digest('hex').slice(0, 12)}.${tipo}`
+}
 
 /** O que cada formato entrega para virar um livro da biblioteca. */
 interface Preparado {
@@ -221,14 +233,18 @@ export class Biblioteca {
     }
   }
 
-  /** Guarda a capa (gerada pela interface a partir da primeira página do PDF). */
+  /** Guarda a capa (a gerada pela interface a partir da primeira página do PDF, ou a do catálogo). */
   async salvarCapa(id: string, bytes: Uint8Array): Promise<Livro | null> {
     const livro = ID_VALIDO.test(id) ? this.banco.obterLivro(id) : null
-    const tipo = TIPOS_DE_CAPA.find(([, eh]) => eh(bytes))?.[0]
-    if (!livro || !tipo || bytes.length > TAMANHO_MAXIMO_DA_CAPA) return null
-    const nome = `capa.${tipo}`
+    const nome = nomeDaCapa(bytes)
+    if (!livro || !nome) return null
+    if (livro.capa === nome) return livro
     await writeFile(join(this.#pastaLivros, id, nome), bytes)
     this.banco.atualizarLivro(id, { capa: nome })
+    // A anterior sai do disco depois que o banco já aponta para a nova.
+    if (livro.capa && ARQUIVO_DE_CAPA.test(livro.capa)) {
+      await rm(join(this.#pastaLivros, id, livro.capa), { force: true }).catch(() => {})
+    }
     return this.banco.obterLivro(id)
   }
 
