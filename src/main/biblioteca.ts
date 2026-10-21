@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join, resolve, sep } from 'node:path'
 import { ErroEpub, imagensDoEpub, lerEpub } from '@nucleo/epub/ler'
+import type { LivroNaNuvem } from '@nucleo/nuvem/regras'
 import { converterPdfEmEpub, type OpcoesDeConversao, type ResultadoConversao } from '@nucleo/pdf/converter'
 import type {
   AndamentoImportacao,
@@ -59,6 +60,8 @@ const TAMANHO_MAXIMO_DA_CAPA = 5 * 1024 * 1024
 // As capas que o app gravou: as da importação ("capa.jpg") e as trocadas ("capa-<hash>.jpg").
 const ARQUIVO_DE_CAPA = /^capa(?:-[0-9a-f]{12})?\.(?:jpg|png|webp|gif|svg|img)$/
 
+const comHash = (bytes: Uint8Array, tipo: string) => `capa-${createHash('sha256').update(bytes).digest('hex').slice(0, 12)}.${tipo}`
+
 /**
  * O nome do arquivo de uma capa, ou null se não é imagem (ou é grande demais). O nome muda junto
  * com a imagem: trocar a capa troca o endereço, e a tela não fica mostrando a antiga.
@@ -66,7 +69,23 @@ const ARQUIVO_DE_CAPA = /^capa(?:-[0-9a-f]{12})?\.(?:jpg|png|webp|gif|svg|img)$/
 export function nomeDaCapa(bytes: Uint8Array): string | null {
   const tipo = TIPOS_DE_CAPA.find(([, eh]) => eh(bytes))?.[0]
   if (!tipo || bytes.length > TAMANHO_MAXIMO_DA_CAPA) return null
-  return `capa-${createHash('sha256').update(bytes).digest('hex').slice(0, 12)}.${tipo}`
+  return comHash(bytes, tipo)
+}
+
+const ehGif = (b: Uint8Array) => b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38
+const ehSvg = (b: Uint8Array) =>
+  /^\uFEFF?\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(
+    new TextDecoder().decode(b.subarray(0, 2048)),
+  )
+
+/**
+ * O nome da capa na nuvem: o mesmo de nomeDaCapa, e também para as capas GIF e SVG que vêm dentro de
+ * EPUBs. Quem baixa confere que o nome bate com a imagem.
+ */
+export function nomeDaCapaNaNuvem(bytes: Uint8Array): string | null {
+  const tipo = TIPOS_DE_CAPA.find(([, eh]) => eh(bytes))?.[0] ?? (ehGif(bytes) ? 'gif' : ehSvg(bytes) ? 'svg' : null)
+  if (!tipo || bytes.length > TAMANHO_MAXIMO_DA_CAPA) return null
+  return comHash(bytes, tipo)
 }
 
 /** O que cada formato entrega para virar um livro da biblioteca. */
@@ -262,14 +281,107 @@ export class Biblioteca {
     return this.banco.obterLivro(id)
   }
 
-  async remover(id: string) {
+  /** Remove o livro (daNuvem: removido em outro aparelho; não volta como lápide). */
+  async remover(id: string, { daNuvem = false } = {}) {
     if (!ID_VALIDO.test(id)) return
-    this.banco.removerLivro(id)
+    this.banco.removerLivro(id, { daNuvem })
     // No Windows, um antivírus pode segurar o arquivo por um instante. Se ainda assim falhar,
     // a pasta fica órfã e sai na próxima abertura do app (limparPastasOrfas).
     await rm(join(this.#pastaLivros, id), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(
       erro => console.warn('Pasta do livro não pôde ser apagada agora', erro),
     )
+  }
+
+  // A nuvem (parte 2).
+
+  async #ler(id: string, arquivo: string | null): Promise<Uint8Array | null> {
+    const caminho = arquivo ? this.caminhoDoArquivo(id, arquivo) : null
+    if (!caminho) return null
+    try {
+      return new Uint8Array(await readFile(caminho))
+    } catch {
+      return null
+    }
+  }
+
+  /** A capa do livro, para subir para a nuvem. */
+  lerCapa(id: string): Promise<Uint8Array | null> {
+    return this.#ler(id, this.obter(id)?.capa ?? null)
+  }
+
+  /** O arquivo original do livro, para subir para a nuvem. */
+  lerOriginal(id: string): Promise<Uint8Array | null> {
+    const livro = this.obter(id)
+    return this.#ler(id, livro?.estado === 'pronto' ? livro.arquivoOriginal : null)
+  }
+
+  /** A capa subiu para a nuvem com o nome do conteúdo; a daqui passa a ter o mesmo nome. */
+  async marcarCapaNaNuvem(id: string, nome: string, bytes: Uint8Array) {
+    const livro = ID_VALIDO.test(id) ? this.banco.obterLivro(id) : null
+    if (!livro?.capa) return
+    if (livro.capa !== nome) await writeFile(join(this.#pastaLivros, id, nome), bytes)
+    this.banco.marcarCapaNaNuvem(id, nome)
+    if (livro.capa !== nome && ARQUIVO_DE_CAPA.test(livro.capa)) {
+      await rm(join(this.#pastaLivros, id, livro.capa), { force: true }).catch(() => {})
+    }
+  }
+
+  /** Uma capa que veio da nuvem: só entra se a imagem for a que o nome diz. */
+  async guardarCapaDaNuvem(id: string, nome: string, bytes: Uint8Array, capaEm: string | null): Promise<boolean> {
+    const livro = ID_VALIDO.test(id) ? this.banco.obterLivro(id) : null
+    if (!livro || nomeDaCapaNaNuvem(bytes) !== nome) return false
+    const pasta = join(this.#pastaLivros, id)
+    await mkdir(pasta, { recursive: true })
+    await writeFile(join(pasta, nome), bytes)
+    this.banco.guardarCapaDaNuvem(id, nome, capaEm)
+    if (livro.capa && livro.capa !== nome && ARQUIVO_DE_CAPA.test(livro.capa)) {
+      await rm(join(pasta, livro.capa), { force: true }).catch(() => {})
+    }
+    return true
+  }
+
+  /** Um livro de outro aparelho: a pasta (para a capa) e o livro no banco, com o arquivo ainda na nuvem. */
+  async criarDaNuvem(livro: LivroNaNuvem): Promise<Livro> {
+    const id = randomUUID()
+    await mkdir(join(this.#pastaLivros, id), { recursive: true })
+    return this.banco.inserirDaNuvem(id, livro)
+  }
+
+  /**
+   * O arquivo de um livro da nuvem chegou: confere o hash, prepara como na importação (o PDF ganha o
+   * texto adaptado) e o livro fica pronto. O que o livro já tem (título, obra, posição) fica.
+   */
+  async completarDaNuvem(
+    id: string,
+    bytes: Uint8Array,
+    aoAndamento?: (a: AndamentoImportacao) => void,
+  ): Promise<{ livro: Livro } | { erro: CodigoErroImportacao }> {
+    const livro = ID_VALIDO.test(id) ? this.banco.obterLivro(id) : null
+    if (!livro) return { erro: 'arquivo-inacessivel' }
+    if (livro.estado !== 'na-nuvem') return { livro }
+    if (createHash('sha256').update(bytes).digest('hex') !== livro.hashSha256) return { erro: 'arquivo-invalido' }
+    let preparado: Preparado
+    try {
+      preparado =
+        livro.formatoOriginal === 'epub'
+          ? this.#prepararEpub(bytes)
+          : await this.#prepararPdf(bytes, id, livro.titulo, aoAndamento)
+    } catch (e) {
+      if (e instanceof ErroEpub || e instanceof ErroDeImportacao) return { erro: e.codigo }
+      throw e
+    }
+    aoAndamento?.({ etapa: 'guardando' })
+    const pastaDoLivro = join(this.#pastaLivros, id)
+    await mkdir(pastaDoLivro, { recursive: true })
+    // A capa do arquivo só entra se o livro ainda não tem uma (a da nuvem vale mais).
+    const usarCapa = !livro.capa && preparado.capa
+    for (const arquivo of preparado.arquivos) {
+      if (arquivo.nome === preparado.capa && !usarCapa) continue
+      await writeFile(join(pastaDoLivro, arquivo.nome), arquivo.bytes)
+    }
+    this.banco.completarDaNuvem(id, { arquivoOriginal: preparado.arquivoOriginal, arquivoLeitura: preparado.arquivoLeitura })
+    if (usarCapa) this.banco.atualizarLivro(id, { capa: preparado.capa })
+    return { livro: this.banco.obterLivro(id)! }
   }
 
   /** Apaga pastas de livros que não estão no banco (importação interrompida, remoção que falhou). */

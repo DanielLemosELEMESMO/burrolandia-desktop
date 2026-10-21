@@ -73,7 +73,8 @@ export interface Livro {
  * - sem-resultado: procurou e não achou;
  * - recusado: você disse que não é nenhuma das sugestões.
  */
-export type Reconhecimento = 'pendente' | 'isbn' | 'titulo' | 'escolhido' | 'sem-resultado' | 'recusado'
+export const RECONHECIMENTOS = ['pendente', 'isbn', 'titulo', 'escolhido', 'sem-resultado', 'recusado'] as const
+export type Reconhecimento = (typeof RECONHECIMENTOS)[number]
 
 /** A obra: o livro como criação, acima das edições ("A Origem das Espécies"). Dados do Open Library. */
 export interface Obra {
