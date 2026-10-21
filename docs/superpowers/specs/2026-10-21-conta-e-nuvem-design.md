@@ -16,7 +16,7 @@ A mesma biblioteca em qualquer aparelho: entrar com a sua conta e encontrar os s
    - a posição de leitura, com a hora em que mudou, e quando o livro foi aberto por último;
    - a capa (bucket privado `capas`);
    - o arquivo original (bucket privado `arquivos`), até **50 MB**, o limite por arquivo do plano gratuito; o plano gratuito tem **1 GB** no total. Livro maior fica só no aparelho, e o app diz isso.
-4. **Conflitos**: a posição mais recente vence, venha de onde vier. No resto, mudança local ainda não enviada vence; senão, vale a da nuvem. Remover um livro num aparelho remove nos outros (só a cópia do app; o arquivo original no computador fica onde estava) e apaga da nuvem a capa e o arquivo dele.
+4. **Conflitos**, campo a campo, pela hora em que cada coisa mudou no aparelho: a posição mais recente vence, venha de onde vier (`posicao_em`); título, autores, obra e edição também (`metadados_em`); a capa escolhida por último (`capa_em`; capa nula não apaga a que está lá); o arquivo entra uma vez e fica; a última abertura é a mais recente. Remover um livro num aparelho remove nos outros (só a cópia do app; o arquivo original no computador fica onde estava) e apaga da nuvem a capa e o arquivo dele.
 5. **Livro de outro aparelho**: aparece na biblioteca com o selo "Na nuvem". Ao abrir, o app baixa o arquivo, confere o hash, prepara (o PDF ganha o texto adaptado) e abre na posição sincronizada. Sem o arquivo na nuvem, explica que ele ficou no outro aparelho.
 6. **Quando sincroniza**: ao entrar, ao abrir o app, alguns segundos depois de qualquer mudança (a posição incluída) e a cada 5 minutos com o app aberto; e quando você pede, em "Sua conta".
 7. **Segurança**: RLS em todas as tabelas (cada pessoa só lê e escreve o que é seu, pelo `auth.uid()`); buckets privados, com política por pasta (o primeiro nível do caminho é o id da pessoa). A chave publicável vai no app (ela é feita para isso, com a RLS por trás). A chave secreta, o token de acesso e a senha do banco nunca entram no repositório.
@@ -25,8 +25,8 @@ A mesma biblioteca em qualquer aparelho: entrar com a sua conta e encontrar os s
 ## 3. O banco na nuvem
 
 - `livros` (chave: pessoa + hash): os campos do item 3, mais `capa` e `arquivo` (o nome do arquivo no storage, quando já foi enviado), `removido_em` (lápide) e `atualizado_em` (a hora do servidor, que guia a sincronização).
-- `guardar_livros(livros jsonb)`: grava vários de uma vez, com a regra da posição mais recente feita no próprio banco.
-- `remover_livros(hashes text[])`: põe a lápide.
+- `guardar_livros(itens jsonb)`: grava até 200 livros de uma vez (cada item com as colunas da tabela e `novo`), com as regras de conflito feitas no próprio banco; devolve como cada um ficou.
+- `remover_livros(itens jsonb)`: `[{hash_sha256, removido_em}]`; põe a lápide e apaga o que era pessoal (posição, obra, capa). Um livro adicionado de novo depois da hora da remoção fica.
 - `uso_da_nuvem()`: quanto a pessoa ocupa no storage.
 
 Também: `livros_desde(desde, depois_de, limite)` lê o que mudou de página em página; `hora_do_aparelho` limita as horas dos aparelhos a 5 minutos à frente do servidor (um relógio adiantado não ganha todas). Os buckets aceitam só os nomes e os tipos que o app usa (`capas/<conta>/<hash>/capa-<hash da imagem>.<tipo>`, `arquivos/<conta>/<hash>.<epub|pdf>`).
@@ -57,3 +57,18 @@ Também: `livros_desde(desde, depois_de, limite)` lê o que mudou de página em 
 ## 5. Fora desta entrega
 
 O texto adaptado dos PDFs não sobe (cada aparelho converte); estantes, destaques e notas ficam para depois; login com Google e confirmação por e-mail esperam o SMTP próprio.
+
+## 6. Para o app do celular
+
+O APK usa o mesmo projeto, as mesmas funções e os mesmos buckets. Para ser a mesma biblioteca, ele faz igual ao desktop:
+
+- **O livro** é o SHA-256 dos bytes do arquivo original, em hexadecimal minúsculo (nunca do texto adaptado nem de uma cópia mexida).
+- **A posição** é o Locator como o desktop grava (`src/nucleo/tipos.ts`, montado em `telas/Leitor.tsx`): no EPUB e no texto adaptado, `locations.cfi` (o CFI do foliate-js), `progression` no capítulo e `totalProgression` no livro; no texto adaptado de um PDF, também `fragments: ["pagina-N"]`; na página original do PDF, `fragments: ["page=N"]`. Quando o CFI não leva a lugar nenhum, o desktop cai para a página do original e depois para a fração do livro: um leitor que não fale CFI ainda acerta a página de um PDF, mas num EPUB fica só com a fração.
+- **A capa** fica em `capas/<conta>/<hash do livro>/capa-<12 primeiros hex do SHA-256 da imagem>.<jpg|png|webp|gif|svg>`, e quem baixa confere o nome contra o conteúdo. **O arquivo** fica em `arquivos/<conta>/<hash>.<epub|pdf>`, até 50 MB; depois de enviado, o livro vai com `arquivo = '<hash>.<formato>'`.
+- **As horas** de cada grupo de campos (`metadados_em`, `capa_em`, `posicao_em`) são as do aparelho no momento da mudança, e são elas que decidem os conflitos; o banco corta o que passar de 5 minutos à frente da hora dele.
+- **`novo`** vai `true` só enquanto este aparelho ainda não enviou o livro para esta conta: assim um livro importado de novo volta, e um aparelho atrasado não desfaz uma remoção. Uma lápide só tira do aparelho um livro que ele já tinha enviado.
+- **O que mudou** vem de `livros_desde`, a partir do `atualizado_em` e do hash do último livro recebido, voltando um minuto (o banco às vezes grava fora de ordem); por isso, aplicar de novo um livro igual não pode mudar nada.
+- **Remover** é `remover_livros` e, depois, apagar a capa e o arquivo do storage.
+- **O que chega da nuvem** é conferido antes de entrar no banco (`nucleo/nuvem/limpar.ts`).
+
+O teste de contrato (`tests/unit/nuvem-contrato.test.ts`) descreve esse comportamento e roda contra o Supabase de verdade. Em TypeScript (Capacitor, ou React Native com o leitor numa WebView), `src/nucleo` (EPUB, PDF → texto adaptado, catálogo, regras da nuvem) vira um pacote dos dois apps, e o foliate-js garante os mesmos CFIs.
