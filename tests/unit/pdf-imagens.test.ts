@@ -3,6 +3,9 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { caixasDasImagens, capaNaPagina, capaNaVisao, margensEmBranco, type CodigosDeOperacao } from '@nucleo/pdf/imagens'
 
+// As fontes padrão do pdf.js: ele pede "/" no fim, e no Windows o join troca as barras pela invertida.
+const PASTA_DAS_FONTES = `${join(__dirname, '../../node_modules/pdfjs-dist/standard_fonts').replace(/\\/g, '/')}/`
+
 // Os códigos do pdf.js (pdfjs-dist, OPS) que a função usa.
 const OPS: CodigosDeOperacao = {
   save: 10,
@@ -148,8 +151,7 @@ describe('num PDF de verdade, pelo pdf.js', () => {
   async function abrir(nome: string) {
     const { getDocument, OPS: codigos } = await import('pdfjs-dist/legacy/build/pdf.mjs')
     const dados = new Uint8Array(readFileSync(join(__dirname, '../fixtures/pdf', nome)))
-    const fontes = join(__dirname, '../../node_modules/pdfjs-dist/standard_fonts/')
-    const tarefa = getDocument({ data: dados, standardFontDataUrl: fontes })
+    const tarefa = getDocument({ data: dados, standardFontDataUrl: PASTA_DAS_FONTES })
     const pdf = await tarefa.promise
     return {
       /** A capa da página em frações da tela (como a interface usa), ou null. */
@@ -194,8 +196,7 @@ describe('num PDF de verdade, pelo pdf.js', () => {
   it('acha a capa no meio da primeira página e nenhuma nas páginas de texto', async () => {
     const { getDocument, OPS: codigos } = await import('pdfjs-dist/legacy/build/pdf.mjs')
     const dados = new Uint8Array(readFileSync(join(__dirname, '../fixtures/pdf/capa-com-margem.pdf')))
-    const fontes = join(__dirname, '../../node_modules/pdfjs-dist/standard_fonts/')
-    const tarefa = getDocument({ data: dados, standardFontDataUrl: fontes })
+    const tarefa = getDocument({ data: dados, standardFontDataUrl: PASTA_DAS_FONTES })
     const pdf = await tarefa.promise
     const capaDaPagina = async (numero: number) => {
       const pagina = await pdf.getPage(numero)
