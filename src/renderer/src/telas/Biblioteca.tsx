@@ -12,6 +12,7 @@ import { Icone } from '../componentes/Icone'
 import { Assinatura } from '../componentes/Marca'
 import { MenuDeAcoes } from '../componentes/MenuDeAcoes'
 import { SobreLivro } from '../componentes/SobreLivro'
+import { TrocarCapa } from '../componentes/TrocarCapa'
 
 type Vista = 'grade' | 'lista'
 
@@ -91,6 +92,8 @@ export function TelaBiblioteca({
   // Um painel "Sobre este livro" por livro (key): a resposta atrasada de um não cai no de outro.
   // Fechado, continua montado até abrir outro livro, para o foco voltar a quem abriu.
   const [sobre, setSobre] = useState<{ livroId: string; aberto: boolean } | null>(null)
+  // O diálogo de capa segue a mesma ideia: um por livro, montado até abrir o de outro.
+  const [trocandoCapa, setTrocandoCapa] = useState<{ livro: Livro; aberto: boolean } | null>(null)
   const campoDeBusca = useRef<HTMLInputElement>(null)
   const visiveis = organizarLivros(livros, { busca, ordem, formato })
 
@@ -135,6 +138,7 @@ export function TelaBiblioteca({
       rotulo={`Mais ações para ${livro.titulo}`}
       acoes={[
         { rotulo: 'Sobre este livro', aoEscolher: () => setSobre({ livroId: livro.id, aberto: true }) },
+        { rotulo: 'Trocar a capa', aoEscolher: () => setTrocandoCapa({ livro, aberto: true }) },
         { rotulo: 'Remover da biblioteca', perigosa: true, aoEscolher: () => setRemovendo(livro) },
       ]}
     />
@@ -288,6 +292,17 @@ export function TelaBiblioteca({
         key={sobre?.livroId ?? 'nenhum'}
         livroId={sobre?.aberto ? sobre.livroId : null}
         aoFechar={() => setSobre(atual => atual && { ...atual, aberto: false })}
+        aoTrocarCapa={livro => {
+          setSobre(atual => atual && { ...atual, aberto: false })
+          setTrocandoCapa({ livro, aberto: true })
+        }}
+      />
+
+      <TrocarCapa
+        key={trocandoCapa?.livro.id ?? 'nenhum'}
+        livro={trocandoCapa?.aberto ? trocandoCapa.livro : null}
+        aoFechar={() => setTrocandoCapa(atual => atual && { ...atual, aberto: false })}
+        aoTrocar={() => aoMudarBiblioteca()}
       />
 
       <Dialogo aberto={!!removendo} titulo="Remover este livro?" aoFechar={() => setRemovendo(null)} alerta>

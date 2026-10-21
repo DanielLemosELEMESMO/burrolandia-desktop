@@ -1,9 +1,10 @@
 // Lê os metadados de um EPUB (título, autores, idioma, identificadores e capa) sem abrir o livro
-// inteiro: só descompacta o que precisa.
+// inteiro: só descompacta o que precisa. Também lista as imagens que podem virar capa.
 
 import { strFromU8, unzipSync } from 'fflate'
 import { DOMParser, type Document, type Element } from '@xmldom/xmldom'
 import { isbnValido } from '../catalogo/isbn'
+import type { ImagemDoLivro } from '../tipos'
 import { extensaoDaImagem } from './comum'
 
 export type CodigoErroEpub = 'arquivo-invalido' | 'drm'
@@ -156,23 +157,26 @@ function verificarDrm(arquivos: Record<string, Uint8Array>) {
   }
 }
 
-export function lerEpub(bytes: Uint8Array): MetadadosEpub {
-  const meta = extrair(bytes, nome => nome.startsWith('META-INF/'))
+/** O pacote (OPF) do EPUB e a pasta dele, para resolver os endereços internos. */
+function lerOpf(bytes: Uint8Array, meta: Record<string, Uint8Array>) {
   const container = meta['META-INF/container.xml']
   if (!container) throw new ErroEpub('arquivo-invalido', 'O arquivo não é um EPUB válido.')
-  verificarDrm(meta)
-
   const rootfile = porNome(xml(container), 'rootfile')[0]
   const caminhoOpf = rootfile && atributo(rootfile, 'full-path')
   if (!caminhoOpf) throw new ErroEpub('arquivo-invalido', 'O EPUB não indica onde estão os metadados.')
   const bytesOpf = extrair(bytes, nome => nome === caminhoOpf)[caminhoOpf]
   if (!bytesOpf) throw new ErroEpub('arquivo-invalido', 'O EPUB não tem o arquivo de metadados.')
+  const pastaOpf = caminhoOpf.includes('/') ? caminhoOpf.slice(0, caminhoOpf.lastIndexOf('/')) : ''
+  return { opf: xml(bytesOpf), pastaOpf }
+}
 
-  const opf = xml(bytesOpf)
+export function lerEpub(bytes: Uint8Array): MetadadosEpub {
+  const meta = extrair(bytes, nome => nome.startsWith('META-INF/'))
+  verificarDrm(meta)
+  const { opf, pastaOpf } = lerOpf(bytes, meta)
   const metadata = porNome(opf, 'metadata')[0]
   if (!metadata) throw new ErroEpub('arquivo-invalido', 'O EPUB não tem metadados.')
 
-  const pastaOpf = caminhoOpf.includes('/') ? caminhoOpf.slice(0, caminhoOpf.lastIndexOf('/')) : ''
   let capa: MetadadosEpub['capa'] = null
   const item = itemDaCapa(opf)
   const href = item && atributo(item, 'href')
@@ -192,4 +196,32 @@ export function lerEpub(bytes: Uint8Array): MetadadosEpub {
     data: texto(porNome(metadata, 'date')[0]),
     capa,
   }
+}
+
+// Imagens que viram capa: as que o app grava (JPEG, PNG, WebP), sem os enfeites (menos de 4 KB).
+const TIPOS_DE_CAPA = new Set(['image/jpeg', 'image/png', 'image/webp'])
+const TAMANHO_MINIMO = 4 * 1024
+const TAMANHO_MAXIMO = 5 * 1024 * 1024
+
+/** As imagens do EPUB que podem virar capa, a capa declarada primeiro, até `maximo`. */
+export function imagensDoEpub(bytes: Uint8Array, maximo = 24): ImagemDoLivro[] {
+  const { opf, pastaOpf } = lerOpf(bytes, extrair(bytes, nome => nome === 'META-INF/container.xml'))
+  const capa = itemDaCapa(opf)
+  const itens = porNome(opf, 'item').filter(el => el !== capa)
+  const candidatos = (capa ? [capa, ...itens] : itens).flatMap(el => {
+    const tipo = (atributo(el, 'media-type') ?? '').toLowerCase()
+    const href = atributo(el, 'href')
+    return TIPOS_DE_CAPA.has(tipo) && href ? [{ nome: resolverCaminho(pastaOpf, href), tipo }] : []
+  })
+  const nomes = new Set(candidatos.map(c => c.nome))
+  const arquivos = extrair(bytes, nome => nomes.has(nome))
+  // A capa declarada vale em qualquer tamanho; as outras imagens, só as que não são enfeite.
+  const nomeDaCapa = capa ? candidatos[0]?.nome : undefined
+  return candidatos
+    .flatMap(({ nome, tipo }) => {
+      const conteudo = arquivos[nome]
+      const minimo = nome === nomeDaCapa ? 1 : TAMANHO_MINIMO
+      return conteudo && conteudo.length >= minimo && conteudo.length <= TAMANHO_MAXIMO ? [{ nome, tipo, bytes: conteudo }] : []
+    })
+    .slice(0, maximo)
 }

@@ -55,6 +55,8 @@ function clienteDoCatalogo(): ClienteOpenLibrary | null {
     (url, init) => net.fetch(url, init),
     falso ? { openLibrary: falso, capas: falso } : ENDERECOS_DO_OPEN_LIBRARY,
     falso ? 0 : undefined,
+    undefined,
+    falso ? 0 : undefined,
   )
 }
 

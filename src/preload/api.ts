@@ -2,8 +2,10 @@
 
 import type {
   AndamentoImportacao,
+  CapaDaObra,
   CapaDoCatalogo,
   Edicao,
+  ImagemDoLivro,
   Livro,
   Locator,
   ObraEncontrada,
@@ -20,8 +22,10 @@ export interface ApiBurrolandia {
     adicionar(): Promise<ResultadoImportacao | null>
     importar(caminho: string): Promise<ResultadoImportacao>
     remover(id: string): Promise<void>
-    /** Guarda a capa gerada pela interface (primeira página de um PDF). */
+    /** Guarda a capa gerada pela interface (primeira página de um PDF, um recorte, uma imagem sua). */
     salvarCapa(id: string, imagem: Uint8Array): Promise<Livro | null>
+    /** As imagens de dentro do livro que podem virar capa (EPUB; o PDF a interface desenha). */
+    imagens(id: string): Promise<ImagemDoLivro[]>
     /** Caminho no disco de um arquivo arrastado para a janela. */
     caminhoDoArquivo(arquivo: File): string
     aoAndamento(quando: (andamento: AndamentoImportacao) => void): () => void
@@ -55,7 +59,12 @@ export interface ApiBurrolandia {
     nenhuma(id: string): Promise<SobreLivro | null>
     /** A imagem da capa do catálogo, para ver antes de trocar, e se ela já é a capa do livro. */
     capa(id: string): Promise<CapaDoCatalogo | null>
-    usarCapa(id: string): Promise<SobreLivro | null>
+    /** As capas da obra e das edições no catálogo, para escolher. null: sem conexão. */
+    capas(id: string): Promise<CapaDaObra[] | null>
+    /** A miniatura de uma capa do catálogo. */
+    miniatura(capaId: number): Promise<Uint8Array | null>
+    /** Usa a capa do catálogo: a escolhida (capaId), ou a da sua edição, ou a da obra. */
+    usarCapa(id: string, capaId?: number): Promise<SobreLivro | null>
     /** Avisa quando o catálogo muda um livro (reconheceu, trocou a capa…). */
     aoMudar(quando: (livroId: string) => void): () => void
   }

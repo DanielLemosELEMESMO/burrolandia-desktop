@@ -36,6 +36,8 @@ const TEMPO_LIMITE = 15_000
 const POR_PAGINA = 100
 const MAXIMO_DE_EDICOES = 300
 const FOLGA = 1000
+// As capas por id não têm o limite das buscas; uma folga curta basta para não atropelar o servidor.
+const FOLGA_DAS_CAPAS = 200
 const PAUSA_PADRAO = 60_000
 const PAUSA_MAXIMA = 10 * 60_000
 
@@ -59,8 +61,11 @@ export const limparConsulta = (texto: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
+/** As buscas e os dados do catálogo andam numa fila; as imagens das capas, em outra. */
+type Fila = 'catalogo' | 'capas'
+
 export class ClienteOpenLibrary {
-  #fila: Promise<unknown> = Promise.resolve()
+  readonly #filas: Record<Fila, Promise<unknown>> = { catalogo: Promise.resolve(), capas: Promise.resolve() }
   /** Até quando não perguntar nada, porque o catálogo pediu calma. */
   #pausadoAte = 0
 
@@ -69,17 +74,19 @@ export class ClienteOpenLibrary {
     private readonly enderecos: Enderecos = ENDERECOS_DO_OPEN_LIBRARY,
     private readonly folga = FOLGA,
     private readonly agora: () => number = Date.now,
+    private readonly folgaDasCapas = FOLGA_DAS_CAPAS,
   ) {}
 
-  /** Uma requisição por vez; um erro não trava as próximas. */
-  #naFila<T>(tarefa: () => Promise<T>): Promise<T> {
-    const resultado = this.#fila.then(tarefa)
-    this.#fila = resultado.catch(() => undefined).then(() => espera(this.folga))
+  /** Uma requisição por vez em cada fila; um erro não trava as próximas. */
+  #naFila<T>(tarefa: () => Promise<T>, fila: Fila): Promise<T> {
+    const resultado = this.#filas[fila].then(tarefa)
+    const folga = fila === 'capas' ? this.folgaDasCapas : this.folga
+    this.#filas[fila] = resultado.catch(() => undefined).then(() => espera(folga))
     return resultado
   }
 
   /** A resposta, ou null quando o endereço não existe (404) ou a consulta não serve (400, 422). */
-  #pedir(url: string): Promise<RespostaHttp | null> {
+  #pedir(url: string, fila: Fila = 'catalogo'): Promise<RespostaHttp | null> {
     return this.#naFila(async () => {
       if (this.agora() < this.#pausadoAte) throw new SemConexao('O Open Library pediu um tempo')
       let resposta: RespostaHttp
@@ -100,7 +107,7 @@ export class ClienteOpenLibrary {
       }
       if (!resposta.ok) throw new SemConexao(`O Open Library respondeu ${resposta.status}`)
       return resposta
-    })
+    }, fila)
   }
 
   async #json(caminho: string): Promise<unknown> {
@@ -156,8 +163,17 @@ export class ClienteOpenLibrary {
   }
 
   /** A capa grande (a imagem), ou null se o catálogo não tem essa capa. */
-  async capa(capaId: number): Promise<Uint8Array | null> {
-    const resposta = await this.#pedir(`${this.enderecos.capas}/b/id/${capaId}-L.jpg?default=false`)
+  capa(capaId: number): Promise<Uint8Array | null> {
+    return this.#imagem(capaId, 'L')
+  }
+
+  /** A capa em tamanho médio, para escolher entre várias. */
+  miniatura(capaId: number): Promise<Uint8Array | null> {
+    return this.#imagem(capaId, 'M')
+  }
+
+  async #imagem(capaId: number, tamanho: 'L' | 'M') {
+    const resposta = await this.#pedir(`${this.enderecos.capas}/b/id/${capaId}-${tamanho}.jpg?default=false`, 'capas')
     return resposta ? new Uint8Array(await resposta.arrayBuffer()) : null
   }
 }

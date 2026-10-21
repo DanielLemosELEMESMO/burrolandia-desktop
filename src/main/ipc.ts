@@ -11,6 +11,7 @@ const ID = /^[0-9a-f-]{36}$/i
 const idValido = (id: unknown): id is string => typeof id === 'string' && ID.test(id)
 const obraValida = (id: unknown): id is string => typeof id === 'string' && /^OL\d{1,12}W$/.test(id)
 const edicaoValida = (id: unknown): id is string => typeof id === 'string' && /^OL\d{1,12}M$/.test(id)
+const capaValida = (id: unknown): id is number => typeof id === 'number' && Number.isSafeInteger(id) && id > 0
 const buscaValida = (texto: unknown): texto is string =>
   typeof texto === 'string' && texto.trim().length > 0 && texto.length <= 200
 
@@ -61,6 +62,8 @@ export function registrarIpc(
     if (lerSessao(banco, biblioteca).livroAberto === id) banco.salvarPreferencia('sessao', { livroAberto: null })
     await biblioteca.remover(id)
   })
+
+  ipcMain.handle('biblioteca:imagens', (_, id: unknown) => (idValido(id) ? biblioteca.imagensDoLivro(id) : []))
 
   ipcMain.handle('biblioteca:salvar-capa', (_, id: unknown, imagem: unknown) => {
     if (!idValido(id) || !(imagem instanceof Uint8Array)) return null
@@ -120,5 +123,9 @@ export function registrarIpc(
   )
   ipcMain.handle('catalogo:nenhuma', (_, id: unknown) => (idValido(id) ? catalogo.nenhuma(id) : null))
   ipcMain.handle('catalogo:capa', (_, id: unknown) => (idValido(id) ? catalogo.capaDoCatalogo(id) : null))
-  ipcMain.handle('catalogo:usar-capa', (_, id: unknown) => (idValido(id) ? catalogo.usarCapaDoCatalogo(id) : null))
+  ipcMain.handle('catalogo:capas', (_, id: unknown) => (idValido(id) ? catalogo.capasDaObra(id) : []))
+  ipcMain.handle('catalogo:miniatura', (_, capaId: unknown) => (capaValida(capaId) ? catalogo.miniaturaDaCapa(capaId) : null))
+  ipcMain.handle('catalogo:usar-capa', (_, id: unknown, capaId: unknown) =>
+    idValido(id) && (capaId === undefined || capaValida(capaId)) ? catalogo.usarCapaDoCatalogo(id, capaId) : null,
+  )
 }

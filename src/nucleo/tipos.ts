@@ -119,6 +119,20 @@ export interface ObraEncontrada {
   edicao: Edicao | null
 }
 
+/** Uma imagem de dentro do livro (EPUB) que pode virar capa. */
+export interface ImagemDoLivro {
+  nome: string
+  tipo: string
+  bytes: Uint8Array
+}
+
+/** Uma capa do catálogo entre as edições da obra, para escolher. */
+export interface CapaDaObra {
+  capaId: number
+  /** Editora e ano da edição, ou "A obra". */
+  legenda: string
+}
+
 /** A capa do catálogo para ver antes de usar, e se ela já é a capa do livro. */
 export interface CapaDoCatalogo {
   imagem: Uint8Array

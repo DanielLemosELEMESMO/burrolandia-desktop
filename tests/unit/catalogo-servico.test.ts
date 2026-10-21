@@ -221,6 +221,36 @@ describe('Catalogo', () => {
     expect(pedidos.filter(p => p.pathname.startsWith('/b/id/'))).toHaveLength(1)
   })
 
+  it('lista as capas da obra e das edições, sem repetir, a da obra primeiro', async () => {
+    const livro = await importar(livros.domCasmurro)
+    const servico = catalogo()
+    await servico.reconhecer(livro.id)
+    const capas = await servico.capasDaObra(livro.id)
+    expect(capas?.[0]).toEqual({ capaId: 647501, legenda: 'A obra' })
+    expect(capas?.map(c => c.capaId).sort()).toEqual([14625893, 15156099, 15167286, 15241023, 3150035, 647501].sort())
+    expect(capas).toContainEqual({ capaId: 15167286, legenda: 'Penguin-Companhia · 2016' })
+    // Sem obra ligada, não há capas para listar.
+    expect(await servico.capasDaObra(inserir({ titulo: 'Sem obra' }).id)).toEqual([])
+  })
+
+  it('a miniatura vem no tamanho médio, uma vez por sessão', async () => {
+    const { cliente, pedidos } = openLibraryFalso()
+    const servico = catalogo(cliente)
+    expect(await servico.miniaturaDaCapa(15167286)).toEqual(JPEG)
+    expect(await servico.miniaturaDaCapa(15167286)).toEqual(JPEG)
+    expect(pedidos.filter(p => p.pathname === '/b/id/15167286-M.jpg')).toHaveLength(1)
+  })
+
+  it('usar uma capa escolhida entre as das edições', async () => {
+    const { cliente, pedidos } = openLibraryFalso()
+    const livro = await importar(livros.domCasmurro)
+    const servico = catalogo(cliente)
+    await servico.reconhecer(livro.id)
+    const sobre = await servico.usarCapaDoCatalogo(livro.id, 3150035)
+    expect(sobre?.livro.capa).toMatch(CAPA)
+    expect(pedidos.some(p => p.pathname === '/b/id/3150035-L.jpg')).toBe(true)
+  })
+
   it('usar a capa do catálogo troca a capa do livro, com outro nome de arquivo', async () => {
     const livro = await importar(livros.domCasmurro)
     const servico = catalogo()

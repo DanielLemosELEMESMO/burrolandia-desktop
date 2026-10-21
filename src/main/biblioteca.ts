@@ -5,12 +5,13 @@ import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join, resolve, sep } from 'node:path'
-import { ErroEpub, lerEpub } from '@nucleo/epub/ler'
+import { ErroEpub, imagensDoEpub, lerEpub } from '@nucleo/epub/ler'
 import { converterPdfEmEpub, type OpcoesDeConversao, type ResultadoConversao } from '@nucleo/pdf/converter'
 import type {
   AndamentoImportacao,
   CodigoErroImportacao,
   Identificadores,
+  ImagemDoLivro,
   Livro,
   Locator,
   ResultadoImportacao,
@@ -111,6 +112,19 @@ export class Biblioteca {
 
   salvarPosicao(id: string, posicao: Locator) {
     this.banco.salvarPosicao(id, posicao)
+  }
+
+  /** As imagens de dentro do livro que podem virar capa (só EPUB: o PDF é desenhado pela interface). */
+  async imagensDoLivro(id: string): Promise<ImagemDoLivro[]> {
+    const livro = this.obter(id)
+    const caminho = livro?.formatoOriginal === 'epub' ? this.caminhoDoArquivo(id, livro.arquivoOriginal) : null
+    if (!caminho) return []
+    try {
+      return imagensDoEpub(new Uint8Array(await readFile(caminho)))
+    } catch (erro) {
+      console.warn('Não deu para ler as imagens do EPUB', erro)
+      return []
+    }
   }
 
   /** Caminho de um arquivo do livro, ou null se não existir ou se tentar sair da pasta do livro. */

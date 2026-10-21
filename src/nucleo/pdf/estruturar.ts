@@ -119,6 +119,9 @@ const NUMERO_DE_PAGINA = /^((p[áa]g(ina)?\.?|page|p\.)\s*)?([0-9]+|[ivxlcdm]+)(
 
 const normalizar = (texto: string) => texto.toLowerCase().replace(/[0-9]+/g, '#').replace(/\s+/g, ' ').trim()
 
+// O aviso que o OCR do Internet Archive grava no texto das páginas que ele leu mal; não é do livro.
+const AVISO_DO_OCR = /^the text on this page is estimated to be only [0-9.,]+\s*% accurate\.?$/i
+
 const naMargem = (linha: Linha, pagina: PaginaPdf) => linha.y > pagina.altura * 0.9 || linha.y < pagina.altura * 0.1
 
 function removerCabecalhosERodapes(porPagina: Linha[][], paginas: PaginaPdf[]) {
@@ -134,6 +137,7 @@ function removerCabecalhosERodapes(porPagina: Linha[][], paginas: PaginaPdf[]) {
   const minimo = Math.max(2, Math.ceil(comTexto * 0.3))
   return porPagina.map((linhas, i) =>
     linhas.filter(l => {
+      if (AVISO_DO_OCR.test(l.texto.trim())) return false
       if (!candidata(l, paginas[i])) return true
       if (NUMERO_DE_PAGINA.test(l.texto)) return false
       return (repeticoes.get(normalizar(l.texto)) ?? 0) < minimo

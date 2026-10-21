@@ -167,6 +167,18 @@ describe('ClienteOpenLibrary', () => {
     expect(await cliente.capa(1)).toBeNull()
   })
 
+  it('as miniaturas vêm do tamanho médio, por uma fila própria que não espera a do catálogo', async () => {
+    const { buscar, pedidos } = catalogoFalso(url =>
+      url.pathname.startsWith('/b/id/') ? resposta(new Uint8Array([0xff, 0xd8, 0xff, 0xe0])) : resposta({ numFound: 0, docs: [] }),
+    )
+    // Folga de 1 s entre as buscas; as capas, sem folga.
+    const cliente = new ClienteOpenLibrary(buscar, enderecos, 1000, Date.now, 0)
+    const inicio = Date.now()
+    await Promise.all([cliente.porTexto('Dom Casmurro'), cliente.miniatura(1), cliente.miniatura(2), cliente.miniatura(3)])
+    expect(Date.now() - inicio).toBeLessThan(900)
+    expect(pedidos.map(p => p.url.pathname).filter(c => c.startsWith('/b/id/'))).toEqual(['/b/id/1-M.jpg', '/b/id/2-M.jpg', '/b/id/3-M.jpg'])
+  })
+
   it('busca uma obra pelo id, com os nomes dos autores', async () => {
     const { buscar, pedidos } = catalogoFalso(() => resposta(fixture('busca-dom-casmurro.json')))
     const obra = await new ClienteOpenLibrary(buscar, enderecos, 0).obra('OL1003040W')

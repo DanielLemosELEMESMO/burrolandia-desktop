@@ -6,12 +6,15 @@
 import { ClienteOpenLibrary, SemConexao } from '@nucleo/catalogo/cliente'
 import { consultasDeTexto, escolherObra, isbnConfere, ordenarEdicoes } from '@nucleo/catalogo/correspondencia'
 import { paraIsbn13 } from '@nucleo/catalogo/isbn'
-import type { CapaDoCatalogo, Edicao, ObraEncontrada, Reconhecimento, SobreLivro } from '@nucleo/tipos'
+import type { CapaDaObra, CapaDoCatalogo, Edicao, ObraEncontrada, Reconhecimento, SobreLivro } from '@nucleo/tipos'
 import type { Banco } from './banco'
 import { nomeDaCapa, type Biblioteca } from './biblioteca'
 
 const MAXIMO_NA_MEMORIA = 500
 const MAXIMO_DE_CAPAS_NA_MEMORIA = 30
+const MAXIMO_DE_MINIATURAS_NA_MEMORIA = 60
+/** Quantas capas oferecer para escolher. */
+const MAXIMO_DE_CAPAS_DA_OBRA = 24
 
 /** Guarda no mapa, esquecendo o mais antigo quando passa do máximo. */
 function guardar<V>(mapa: Map<string | number, V>, chave: string | number, valor: V, maximo: number) {
@@ -26,6 +29,7 @@ export class Catalogo {
   readonly #edicoesVistas = new Map<string | number, Edicao>()
   readonly #emAndamento = new Map<string, Promise<SobreLivro | null>>()
   readonly #capas = new Map<string | number, Uint8Array>()
+  readonly #miniaturas = new Map<string | number, Uint8Array>()
 
   constructor(
     private readonly banco: Banco,
@@ -159,6 +163,34 @@ export class Catalogo {
     return { imagem, emUso: this.banco.obterLivro(livroId)?.capa === nomeDaCapa(imagem) }
   }
 
+  /** As capas que o catálogo tem para a obra do livro: a da obra e as das edições, sem repetir. null: sem conexão. */
+  async capasDaObra(livroId: string): Promise<CapaDaObra[] | null> {
+    const obra = this.sobre(livroId)?.obra
+    if (!obra) return []
+    const edicoes = await this.edicoes(livroId)
+    if (edicoes === null) return null
+    const capas: CapaDaObra[] = []
+    const juntar = (capaId: number | null, legenda: string) => {
+      if (capaId && !capas.some(c => c.capaId === capaId)) capas.push({ capaId, legenda })
+    }
+    juntar(obra.capaId, 'A obra')
+    for (const e of edicoes) {
+      juntar(e.capaId, [e.editoras.join(', ') || 'Editora não informada', e.ano ?? e.publicadaEm].filter(Boolean).join(' · '))
+    }
+    return capas.slice(0, MAXIMO_DE_CAPAS_DA_OBRA)
+  }
+
+  /** A miniatura de uma capa do catálogo (tamanho médio), baixada uma vez por sessão. */
+  async miniaturaDaCapa(capaId: number): Promise<Uint8Array | null> {
+    if (!this.cliente) return null
+    const guardada = this.#miniaturas.get(capaId)
+    if (guardada) return guardada
+    const imagem = await this.cliente.miniatura(capaId).catch(() => null)
+    if (!imagem || !nomeDaCapa(imagem)) return null
+    guardar(this.#miniaturas, capaId, imagem, MAXIMO_DE_MINIATURAS_NA_MEMORIA)
+    return imagem
+  }
+
   /** Busca livre, para quando a obra não foi reconhecida (ou não é a certa). null: sem conexão. */
   async buscarObras(texto: string): Promise<ObraEncontrada[] | null> {
     if (!this.cliente) return null
@@ -213,9 +245,9 @@ export class Catalogo {
     return this.sobre(livroId)
   }
 
-  /** Troca a capa do livro pela do catálogo (a da sua edição, ou a da obra). */
-  async usarCapaDoCatalogo(livroId: string): Promise<SobreLivro | null> {
-    await this.#baixarCapa(livroId, this.#capaId(livroId))
+  /** Troca a capa do livro pela do catálogo: a escolhida, ou a da sua edição, ou a da obra. */
+  async usarCapaDoCatalogo(livroId: string, capaId?: number): Promise<SobreLivro | null> {
+    await this.#baixarCapa(livroId, capaId ?? this.#capaId(livroId))
     this.aoMudar(livroId)
     return this.sobre(livroId)
   }

@@ -141,6 +141,18 @@ describe('estruturar: cabeçalhos, rodapés e colunas', () => {
     )
   })
 
+  it('tira o aviso de OCR que os PDFs do Internet Archive põem no alto da página, em qualquer tamanho', () => {
+    const paginas = [
+      pagina(1, [
+        item('The text on this page is estimated to be only 20.33% accurate', MARGEM, 560, 14),
+        cheia('A origem das espécies, em nova tradução, que continua na linha de baixo e', 500),
+        item('termina aqui.', MARGEM, 484),
+      ]),
+    ]
+    const { blocos } = estruturar(documento(paginas))
+    expect(blocos.map(textoDe)).toEqual(['A origem das espécies, em nova tradução, que continua na linha de baixo e termina aqui.'])
+  })
+
   it('não confunde título de capítulo no alto da página com cabeçalho repetido', () => {
     const paginas = [1, 2, 3].map(n =>
       pagina(n, [

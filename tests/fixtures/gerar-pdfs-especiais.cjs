@@ -1,10 +1,12 @@
 // PDFs de teste escritos à mão, byte a byte, para casos que o Chromium não gera:
 //   - titulo-com-nulo.pdf: título, autor e marcadores em UTF-16 terminados em U+0000 (alguns
 //     programas gravam assim; sem limpeza, isso quebra o XML do EPUB gerado);
-//   - paisagem.pdf: páginas 16:9, como slides (páginas baixas revelam erros de "página atual").
+//   - paisagem.pdf: páginas 16:9, como slides (páginas baixas revelam erros de "página atual");
+//   - capa-com-margem.pdf: a capa é uma imagem (300×450) no meio de uma página branca, com uma
+//     linha de texto em cima, como em muitos PDFs digitalizados.
 // Rode com: node tests/fixtures/gerar-pdfs-especiais.cjs
 
-const { writeFileSync } = require('node:fs')
+const { readFileSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
 
 const utf16ComNulo = texto =>
@@ -92,6 +94,32 @@ const paisagem = documento({
   ]),
 })
 
+/** A capa como imagem no meio da primeira página branca; depois, duas páginas de texto. */
+function capaComMargem() {
+  const jpeg = readFileSync(join(__dirname, 'capa-vermelha.jpg'))
+  const paginaDeTexto = k =>
+    [
+      linha(16, 56, 540, `Capitulo ${k}`),
+      ...Array.from({ length: 20 }, (_, i) => linha(11, 56, 500 - i * 18, `Linha ${i + 1} do capitulo ${k}, com texto de livro para adaptar.`)),
+    ].join('\n')
+  const pagina = (conteudo, recursos) =>
+    `<< /Type /Page /Parent 3 0 R /MediaBox [0 0 420 595] /Contents ${conteudo} 0 R /Resources << /Font << /F1 4 0 R >>${recursos} >> >>`
+  return montarPdf([
+    '<< /Type /Catalog /Pages 3 0 R >>',
+    '<< /Title (Capa com Margem) /Author (Fulana de Tal) >>',
+    '<< /Type /Pages /Kids [6 0 R 8 0 R 10 0 R] /Count 3 >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+    `<< /Type /XObject /Subtype /Image /Width 300 /Height 450 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n${jpeg.toString('latin1')}\nendstream`,
+    pagina(7, ' /XObject << /Im1 5 0 R >>'),
+    fluxo([linha(10, 60, 560, 'Assim falou o teste'), 'q 300 0 0 450 60 80 cm /Im1 Do Q'].join('\n')),
+    pagina(9, ''),
+    fluxo(paginaDeTexto(1)),
+    pagina(11, ''),
+    fluxo(paginaDeTexto(2)),
+  ])
+}
+
 writeFileSync(join(__dirname, 'pdf', 'titulo-com-nulo.pdf'), comNulo)
 writeFileSync(join(__dirname, 'pdf', 'paisagem.pdf'), paisagem)
-console.log('gerados titulo-com-nulo.pdf e paisagem.pdf')
+writeFileSync(join(__dirname, 'pdf', 'capa-com-margem.pdf'), capaComMargem())
+console.log('gerados titulo-com-nulo.pdf, paisagem.pdf e capa-com-margem.pdf')

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { strToU8, unzipSync, zipSync, strFromU8 } from 'fflate'
 import { escreverEpub, type EpubParaEscrever } from '@nucleo/epub/escrever'
-import { lerEpub, ErroEpub } from '@nucleo/epub/ler'
+import { imagensDoEpub, lerEpub, ErroEpub } from '@nucleo/epub/ler'
 
 const capaSvg = strToU8('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"><rect width="600" height="900" fill="#2d5a4e"/></svg>')
 
@@ -87,6 +87,44 @@ describe('escreverEpub', () => {
   it('escapa caracteres especiais nos metadados', () => {
     const arquivos = unzipSync(escreverEpub({ ...livroBase, titulo: 'Ciência & Fé <ensaios>' }))
     expect(strFromU8(arquivos['OEBPS/content.opf'])).toContain('Ciência &amp; Fé &lt;ensaios&gt;')
+  })
+})
+
+describe('imagensDoEpub', () => {
+  /** Uma "imagem" com o começo de um JPEG e o tamanho pedido. */
+  const jpeg = (tamanho: number) => {
+    const bytes = new Uint8Array(tamanho)
+    bytes.set([0xff, 0xd8, 0xff])
+    return bytes
+  }
+
+  it('lista as imagens que podem virar capa, a capa declarada primeiro; SVG e enfeites pequenos ficam de fora', () => {
+    const [capa, figura, icone] = [jpeg(2000), jpeg(9000), jpeg(500)]
+    const epub = epubManual(
+      '<dc:title>Ilustrado</dc:title><meta name="cover" content="capa"/>',
+      '<item id="figura" href="img/figura.png" media-type="image/png"/>' +
+        '<item id="icone" href="img/icone.jpg" media-type="image/jpeg"/>' +
+        '<item id="capa" href="img/capa.jpg" media-type="image/jpeg"/>' +
+        '<item id="vetor" href="img/vetor.svg" media-type="image/svg+xml"/>',
+      {
+        'OPS/img/figura.png': figura,
+        'OPS/img/icone.jpg': icone,
+        'OPS/img/capa.jpg': capa,
+        'OPS/img/vetor.svg': strToU8('<svg xmlns="http://www.w3.org/2000/svg"/>'),
+      },
+    )
+    const imagens = imagensDoEpub(epub)
+    expect(imagens.map(i => [i.nome, i.tipo])).toEqual([
+      ['OPS/img/capa.jpg', 'image/jpeg'],
+      ['OPS/img/figura.png', 'image/png'],
+    ])
+    expect(imagens[0].bytes).toEqual(capa)
+  })
+
+  it('para no máximo pedido', () => {
+    const itens = Array.from({ length: 5 }, (_, i) => `<item id="f${i}" href="f${i}.jpg" media-type="image/jpeg"/>`).join('')
+    const arquivos = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`OPS/f${i}.jpg`, jpeg(5000)]))
+    expect(imagensDoEpub(epubManual('<dc:title>Fotos</dc:title>', itens, arquivos), 3)).toHaveLength(3)
   })
 })
 

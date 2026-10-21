@@ -672,3 +672,209 @@
   padding-top: 14px;
   border-top: 1px solid var(--linha);
 }
+
+/* Trocar a capa: as opções em grade e o recorte. O diálogo fica mais largo para caber a página. */
+
+.dialogo:has(.trocar-capa) {
+  width: min(780px, calc(100vw - 32px));
+}
+
+.trocar-capa {
+  display: grid;
+  gap: 16px;
+}
+
+.trocar-capa-titulo {
+  font: 600 18px/1.3 var(--display);
+}
+
+.trocar-capa-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 12px;
+  max-height: min(50vh, 460px);
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.trocar-capa-opcao {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: var(--alvo);
+  padding: 8px;
+  border: 1px solid var(--linha);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--tinta);
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: center;
+  transition: background var(--transicao), border-color var(--transicao);
+}
+
+.trocar-capa-opcao:hover {
+  background: var(--acento-suave);
+}
+
+.trocar-capa-opcao[aria-pressed='true'] {
+  border-color: var(--acento);
+  box-shadow: inset 0 0 0 2px var(--acento);
+}
+
+.trocar-capa-opcao img,
+.trocar-capa-vazia {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--acento-suave);
+}
+
+.trocar-capa-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.trocar-capa-erro {
+  color: var(--perigo);
+  font-weight: 600;
+}
+
+.trocar-capa-computador {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  padding: 24px;
+  border: 2px dashed var(--linha-forte);
+  border-radius: 14px;
+}
+
+/* O campo de arquivo fica escondido dentro do botão; o anel de foco aparece no botão. */
+.trocar-capa-arquivo:has(input:focus-visible) {
+  outline: 3px solid var(--foco);
+  outline-offset: 3px;
+}
+
+.sobre-trocar-capa {
+  display: inline-flex;
+  margin-top: 4px;
+}
+
+/* O recorte: a imagem inteira, escurecida fora da seleção. */
+
+.recorte-moldura {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.recorte {
+  position: relative;
+  display: inline-block;
+  margin: 8px;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.recorte-escuro {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.recorte-escuro div {
+  position: absolute;
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 52%);
+}
+
+.recorte img {
+  display: block;
+  max-width: 100%;
+  max-height: min(56vh, 560px);
+  pointer-events: none;
+}
+
+.recorte-selecao {
+  position: absolute;
+  outline: 2px solid var(--creme);
+  cursor: move;
+}
+
+.recorte-selecao:focus-visible {
+  outline: 3px solid var(--foco);
+  outline-offset: 0;
+  border-radius: 0;
+}
+
+.recorte-alca {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--creme);
+  box-shadow: 0 0 0 2px var(--ameixa);
+  transform: translate(-50%, -50%);
+}
+
+/* A área de pegar é maior que o desenho da alça. */
+.recorte-alca::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
+}
+
+.recorte-alca-no {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+.recorte-alca-n {
+  left: 50%;
+  top: 0;
+  cursor: ns-resize;
+}
+
+.recorte-alca-ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.recorte-alca-l {
+  left: 100%;
+  top: 50%;
+  cursor: ew-resize;
+}
+
+.recorte-alca-se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+
+.recorte-alca-s {
+  left: 50%;
+  top: 100%;
+  cursor: ns-resize;
+}
+
+.recorte-alca-so {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+
+.recorte-alca-o {
+  left: 0;
+  top: 50%;
+  cursor: ew-resize;
+}

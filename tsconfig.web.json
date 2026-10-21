@@ -32,6 +32,8 @@
     "src/nucleo/tempo.ts",
     "src/nucleo/organizar.ts",
     "src/nucleo/cores.ts",
-    "src/nucleo/catalogo/correspondencia.ts"
+    "src/nucleo/catalogo/correspondencia.ts",
+    "src/nucleo/pdf/imagens.ts",
+    "src/nucleo/recorte.ts"
   ]
 }

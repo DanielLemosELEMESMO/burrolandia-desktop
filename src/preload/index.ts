@@ -9,6 +9,7 @@ const api: ApiBurrolandia = {
     importar: caminho => ipcRenderer.invoke('biblioteca:importar', caminho),
     remover: id => ipcRenderer.invoke('biblioteca:remover', id),
     salvarCapa: (id, imagem) => ipcRenderer.invoke('biblioteca:salvar-capa', id, imagem),
+    imagens: id => ipcRenderer.invoke('biblioteca:imagens', id),
     caminhoDoArquivo: arquivo => webUtils.getPathForFile(arquivo),
     aoAndamento: quando => {
       const ouvinte = (_: unknown, andamento: AndamentoImportacao) => quando(andamento)
@@ -40,7 +41,9 @@ const api: ApiBurrolandia = {
     escolherEdicao: (id, edicaoId) => ipcRenderer.invoke('catalogo:escolher-edicao', id, edicaoId),
     nenhuma: id => ipcRenderer.invoke('catalogo:nenhuma', id),
     capa: id => ipcRenderer.invoke('catalogo:capa', id),
-    usarCapa: id => ipcRenderer.invoke('catalogo:usar-capa', id),
+    capas: id => ipcRenderer.invoke('catalogo:capas', id),
+    miniatura: capaId => ipcRenderer.invoke('catalogo:miniatura', capaId),
+    usarCapa: (id, capaId) => ipcRenderer.invoke('catalogo:usar-capa', id, capaId),
     aoMudar: quando => {
       const ouvinte = (_: unknown, livroId: string) => quando(livroId)
       ipcRenderer.on('catalogo:mudou', ouvinte)

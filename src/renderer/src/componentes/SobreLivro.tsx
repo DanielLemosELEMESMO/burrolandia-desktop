@@ -87,7 +87,16 @@ function CapaDoCatalogo({ livroId, aoUsar }: { livroId: string; aoUsar: () => vo
   )
 }
 
-export function SobreLivro({ livroId, aoFechar }: { livroId: string | null; aoFechar: () => void }) {
+export function SobreLivro({
+  livroId,
+  aoFechar,
+  aoTrocarCapa,
+}: {
+  livroId: string | null
+  aoFechar: () => void
+  /** Abre o diálogo "Trocar a capa" para este livro. */
+  aoTrocarCapa?: (livro: Sobre['livro']) => void
+}) {
   const [sobre, setSobre] = useState<Sobre | null>(null)
   const [vista, setVista] = useState<Vista>('detalhes')
   const [andamento, setAndamento] = useState<string | null>(null)
@@ -238,6 +247,11 @@ export function SobreLivro({ livroId, aoFechar }: { livroId: string | null; aoFe
             <div>
               <strong>{livro.titulo}</strong>
               {livro.autores.length > 0 && <span>{livro.autores.join(', ')}</span>}
+              {aoTrocarCapa && (
+                <button type="button" className="botao-texto sobre-trocar-capa" onClick={() => aoTrocarCapa(livro)}>
+                  Trocar a capa
+                </button>
+              )}
             </div>
           </div>
 
