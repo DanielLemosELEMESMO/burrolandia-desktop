@@ -46,7 +46,8 @@ test('sair do leitor pelo dock grava a posição na hora, sem esperar o salvamen
   await janela.getByRole('dialog', { name: 'Seu livro está na biblioteca' }).getByRole('button', { name: 'Começar a ler' }).click()
   const leitor = janela.getByRole('main', { name: 'Lendo Dom Casmurro' })
   await expect(leitor).toHaveAttribute('data-cfi', /^epubcfi/)
-  const inicio = await leitor.getAttribute('data-cfi')
+  // Ao abrir, a posição ainda se acerta na primeira página; virar antes disso confunde as duas mudanças.
+  const inicio = await posicaoParada(janela, leitor)
 
   await janela.keyboard.press('ArrowRight')
   await expect(leitor).not.toHaveAttribute('data-cfi', inicio!)

@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import { gravarLivrosDeTeste } from '../fixtures/livros'
 import type { ApiBurrolandia } from '../../src/preload/api'
-import { abrirApp, escolherArquivo, irPara, novaPastaDeDados } from './app'
+import { abrirApp, escolherArquivo, irPara, novaPastaDeDados, posicaoParada } from './app'
 
 test('adiciona um EPUB, lê e reabre exatamente onde parou', async () => {
   const dados = novaPastaDeDados()
@@ -21,14 +21,14 @@ test('adiciona um EPUB, lê e reabre exatamente onde parou', async () => {
 
   const leitor = janela.getByRole('main', { name: 'Lendo Dom Casmurro' })
   await expect(leitor).toHaveAttribute('data-cfi', /^epubcfi/)
-  const inicio = await leitor.getAttribute('data-cfi')
+  const inicio = await posicaoParada(janela, leitor)
 
   for (let i = 0; i < 4; i++) {
     await janela.keyboard.press('ArrowRight')
     await janela.waitForTimeout(250)
   }
   await expect(leitor).not.toHaveAttribute('data-cfi', inicio!)
-  const parou = await leitor.getAttribute('data-cfi')
+  const parou = await posicaoParada(janela, leitor)
   await janela.waitForTimeout(600) // deixa o salvamento automático acontecer
   await app.close()
 

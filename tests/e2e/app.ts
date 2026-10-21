@@ -42,8 +42,8 @@ export async function escolherArquivo(app: ElectronApplication, caminho: string)
 }
 
 /**
- * A posição do leitor depois que ela para de mudar. Ao virar a página, o foliate pode avisar uma
- * posição de passagem antes da final; ler logo a primeira mudança pega a de passagem.
+ * A posição do leitor depois que ela para de mudar. Ao abrir o livro e ao virar a página, o foliate
+ * pode avisar uma posição de passagem antes da final; ler logo a primeira mudança pega a de passagem.
  */
 export async function posicaoParada(janela: Page, leitor: Locator) {
   let anterior = await leitor.getAttribute('data-cfi')
