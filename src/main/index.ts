@@ -3,13 +3,17 @@ import { join } from 'node:path'
 import { app, BrowserWindow, dialog, Menu, nativeTheme, net, screen, shell } from 'electron'
 import { ClienteOpenLibrary, ENDERECOS_DO_OPEN_LIBRARY } from '@nucleo/catalogo/cliente'
 import { MARCA, TEMAS } from '@nucleo/cores'
+import type { Remoto } from '@nucleo/nuvem/remoto'
 import type { Preferencias } from '@nucleo/tipos'
 import { Banco } from './banco'
 import { Biblioteca } from './biblioteca'
 import { Catalogo } from './catalogo'
 import { converterEmProcessoSeparado } from './conversorPdf'
 import { lerPreferencias, lerSessao, registrarIpc } from './ipc'
+import { Nuvem } from './nuvem'
 import { ORIGEM, caminhoDaInterface, registrarEsquema, tratarProtocolo, urlDaInterface } from './protocolo'
+import { sessaoCifrada } from './sessaoCifrada'
+import { PROJETO_DA_NUVEM, RemotoSupabase } from './supabase'
 
 // Nome sem acento para a pasta de dados (%APPDATA%\Burrolandia); as janelas mostram "Burrolândia".
 app.setName('Burrolandia')
@@ -58,6 +62,18 @@ function clienteDoCatalogo(): ClienteOpenLibrary | null {
     undefined,
     falso ? 0 : undefined,
   )
+}
+
+/**
+ * A nuvem: o projeto do Supabase, pela rede do Chromium. Nos testes, BURROLANDIA_NUVEM aponta para
+ * uma nuvem de mentira, ou é "desligada" (nenhum teste fala com a nuvem de verdade).
+ */
+function remotoDaNuvem(banco: Banco): Remoto | null {
+  const endereco = process.env.BURROLANDIA_NUVEM
+  if (endereco === 'desligada') return null
+  const projeto = endereco ? { url: endereco, chave: 'sb_publishable_de_teste' } : PROJETO_DA_NUVEM
+  const buscar: typeof fetch = (url, init) => net.fetch(url instanceof URL ? url.href : url, init)
+  return new RemotoSupabase(projeto, sessaoCifrada(banco), buscar)
 }
 
 // Os livros ainda não procurados no catálogo são procurados um pouco depois de abrir, sem atrapalhar.
@@ -124,6 +140,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   let banco: Banco | undefined
+  let nuvem: Nuvem | undefined
 
   app.on('second-instance', () => {
     const janela = BrowserWindow.getAllWindows()[0]
@@ -154,19 +171,29 @@ if (!app.requestSingleInstanceLock()) {
     )
     const bancoAberto = banco
     void biblioteca.limparPastasOrfas()
-    const catalogo = new Catalogo(banco, biblioteca, clienteDoCatalogo(), livroId => {
+    const avisarJanelas = (canal: string, ...argumentos: unknown[]) => {
       for (const janela of BrowserWindow.getAllWindows()) {
-        if (!janela.isDestroyed() && !janela.webContents.isDestroyed()) janela.webContents.send('catalogo:mudou', livroId)
+        if (!janela.isDestroyed() && !janela.webContents.isDestroyed()) janela.webContents.send(canal, ...argumentos)
       }
-    })
+    }
+    const catalogo = new Catalogo(banco, biblioteca, clienteDoCatalogo(), livroId => avisarJanelas('catalogo:mudou', livroId))
+    const sincronia = new Nuvem(banco, biblioteca, remotoDaNuvem(banco), (estado, livros) =>
+      avisarJanelas('nuvem:mudou', estado, livros),
+    )
+    nuvem = sincronia
+    // Cada mudança daqui (posição, capa, livro novo, removido) sobe uns segundos depois.
+    banco.quandoMudar(() => sincronia.agendar())
 
     tratarProtocolo(biblioteca, pastaInterface)
-    registrarIpc(banco, biblioteca, catalogo, () => {
+    registrarIpc(banco, biblioteca, catalogo, sincronia, () => {
       const { fundo } = aparencia(bancoAberto, biblioteca)
       for (const janela of BrowserWindow.getAllWindows()) janela.setBackgroundColor(fundo)
     })
     criarJanela(banco, biblioteca)
+    void sincronia.iniciar()
     setTimeout(() => void catalogo.reconhecerPendentes(), ESPERA_PARA_RECONHECER)
+    // Voltando para a janela (depois de ler no celular, por exemplo), vê o que mudou.
+    app.on('browser-window-focus', () => sincronia.aoVoltar())
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) criarJanela(bancoAberto, biblioteca)
@@ -177,5 +204,17 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== 'darwin') app.quit()
   })
 
-  app.on('will-quit', () => banco?.fechar())
+  // Fechando, a última posição sobe antes (no máximo 3 segundos; o resto vai na próxima abertura).
+  let subiuAntesDeSair = false
+  app.on('before-quit', evento => {
+    if (subiuAntesDeSair || !nuvem) return
+    subiuAntesDeSair = true
+    evento.preventDefault()
+    void nuvem.enviarAntesDeSair().finally(() => app.quit())
+  })
+
+  app.on('will-quit', () => {
+    void nuvem?.parar()
+    banco?.fechar()
+  })
 }

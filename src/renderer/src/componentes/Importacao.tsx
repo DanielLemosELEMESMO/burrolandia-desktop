@@ -21,7 +21,7 @@ const SEM_CAMINHO =
   'Não deu para saber onde esse arquivo está no computador. Salve-o numa pasta e arraste de lá, ou use Importar livro.'
 
 /** PDFs chegam sem capa: a primeira página vira a capa. Se falhar, fica a capa tipográfica. */
-async function comCapa(livro: Livro): Promise<Livro> {
+export async function comCapa(livro: Livro): Promise<Livro> {
   if (livro.formatoOriginal !== 'pdf' || livro.capa) return livro
   try {
     const imagem = await gerarCapaDoPdf(urlDoArquivo(livro, livro.arquivoOriginal))
@@ -147,7 +147,7 @@ function Andamento({ andamento, adaptou }: { andamento: AndamentoImportacao; ada
   )
 }
 
-function LivroResumo({ livro }: { livro: Livro }) {
+export function LivroResumo({ livro }: { livro: Livro }) {
   return (
     <div className="livro-resumo">
       <Capa livro={livro} tamanho="pequena" />

@@ -7,6 +7,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { gravarLivrosDeTeste } from '../fixtures/livros'
 import { abrirApp, escolherArquivo, irPara, novaPastaDeDados } from '../e2e/app'
 import { abrirCatalogoFalso } from '../e2e/catalogo-falso'
+import { abrirNuvemFalsa } from '../e2e/nuvem-falsa'
 
 const destino = process.env.CAPTURAS ?? join(__dirname, '../../test-results/capturas')
 
@@ -24,7 +25,8 @@ test('capturas das telas', async () => {
   const pdf = join(dados, 'origem', 'notas-duas-colunas.pdf')
   copyFileSync(join(__dirname, '../fixtures/pdf/notas-duas-colunas.pdf'), pdf)
   const catalogo = await abrirCatalogoFalso()
-  const { app, janela } = await abrirApp(dados, { catalogo: catalogo.url })
+  const nuvem = await abrirNuvemFalsa()
+  const { app, janela } = await abrirApp(dados, { catalogo: catalogo.url, nuvem: nuvem.url })
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1280, 820))
   const foto = (nome: string) => janela.screenshot({ path: join(destino, `${nome}.png`) })
 
@@ -152,6 +154,37 @@ test('capturas das telas', async () => {
   await trocar.getByRole('list', { name: 'Capas do catálogo' }).locator('img').first().waitFor()
   await janela.waitForTimeout(800)
   await foto('19-trocar-capa-catalogo')
+  await trocar.getByRole('button', { name: 'Fechar' }).click()
+
+  // Sua conta: entrar (criar a conta) e como está a nuvem.
+  await janela.getByRole('banner').getByRole('button', { name: 'Entrar' }).click()
+  const conta = janela.getByRole('dialog', { name: 'Sua conta' })
+  await conta.getByRole('radio', { name: 'Criar conta' }).check()
+  await conta.getByLabel('E-mail').fill('ana@burrolandia.test')
+  await janela.waitForTimeout(300)
+  await foto('20-sua-conta-criar')
+  await conta.getByLabel('Senha').fill('senha-de-teste-123')
+  await conta.getByRole('button', { name: 'Criar conta' }).click()
+  await expect(conta.getByRole('status')).toHaveText(/Tudo sincronizado/, { timeout: 30_000 })
+  await janela.waitForTimeout(300)
+  await foto('21-sua-conta-sincronizada')
   await app.close()
+
+  // Outro aparelho na mesma conta: os livros chegam "na nuvem" e descem ao abrir.
+  const outro = await abrirApp(novaPastaDeDados(), { nuvem: nuvem.url })
+  await outro.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1280, 820))
+  await outro.janela.getByRole('banner').getByRole('button', { name: 'Entrar' }).click()
+  const contaDoOutro = outro.janela.getByRole('dialog', { name: 'Sua conta' })
+  await contaDoOutro.getByLabel('E-mail').fill('ana@burrolandia.test')
+  await contaDoOutro.getByLabel('Senha').fill('senha-de-teste-123')
+  await contaDoOutro.getByRole('button', { name: 'Entrar', exact: true }).click()
+  await expect(contaDoOutro.getByRole('status')).toHaveText(/Tudo sincronizado/, { timeout: 30_000 })
+  await outro.janela.keyboard.press('Escape')
+  await irPara(outro.janela, 'Biblioteca')
+  await outro.janela.getByRole('main').locator('img.capa').first().waitFor()
+  await outro.janela.waitForTimeout(600)
+  await outro.janela.screenshot({ path: join(destino, '22-outro-aparelho-na-nuvem.png') })
+  await outro.app.close()
   await catalogo.fechar()
+  await nuvem.fechar()
 })

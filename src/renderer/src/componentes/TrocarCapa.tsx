@@ -210,8 +210,10 @@ function Conteudo({ livro, aoFechar, aoTrocar }: { livro: Livro; aoFechar: () =>
   const voltou = useRef(false)
 
   const ehPdf = livro.formatoOriginal === 'pdf'
-  const paginas = usarPaginasDoPdf(livro, ehPdf && vistas.includes('livro'))
-  const imagens = usarImagensDoEpub(livro, !ehPdf && vistas.includes('livro'))
+  // O livro que está só na nuvem ainda não tem o arquivo neste computador: as páginas vêm depois de abrir.
+  const comArquivo = livro.estado !== 'na-nuvem'
+  const paginas = usarPaginasDoPdf(livro, comArquivo && ehPdf && vistas.includes('livro'))
+  const imagens = usarImagensDoEpub(livro, comArquivo && !ehPdf && vistas.includes('livro'))
   const catalogo = usarCapasDoCatalogo(livro, vistas.includes('catalogo'))
 
   // A imagem do recorte é um blob: sai da memória quando troca ou fecha.
@@ -355,7 +357,11 @@ function Conteudo({ livro, aoFechar, aoTrocar }: { livro: Livro; aoFechar: () =>
             ))}
           </div>
 
-          {origem === 'livro' && ehPdf && (
+          {origem === 'livro' && !comArquivo && (
+            <p>Este livro ainda está só na nuvem. Abra-o uma vez para ele descer; depois as páginas e imagens dele aparecem aqui.</p>
+          )}
+
+          {origem === 'livro' && comArquivo && ehPdf && (
             <>
               <p>Escolha a página onde está a capa. Se ela for uma imagem dentro da página, o recorte já começa nela.</p>
               {paginas.carga === 'falhou' ? (
@@ -382,6 +388,7 @@ function Conteudo({ livro, aoFechar, aoTrocar }: { livro: Livro; aoFechar: () =>
           )}
 
           {origem === 'livro' &&
+            comArquivo &&
             !ehPdf &&
             (imagens.carga === 'carregando' ? (
               <p className="dica">Procurando as imagens do livro…</p>

@@ -14,6 +14,8 @@
 .tela-topo {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   height: 84px;
 }
 
@@ -193,6 +195,26 @@
   color: var(--creme);
   font: 700 12px/1.4 var(--ui);
   letter-spacing: 0.08em;
+}
+
+/* O livro que está só na nuvem (desce ao abrir): no canto de cima, longe do título e do autor. */
+.selo-nuvem {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 6px;
+  background: rgb(47 14 47 / 86%);
+  color: var(--creme);
+  font: 600 12px/1.4 var(--ui);
+}
+
+.selo-nuvem .icone {
+  width: 16px;
+  height: 16px;
 }
 
 .cartao-titulo {

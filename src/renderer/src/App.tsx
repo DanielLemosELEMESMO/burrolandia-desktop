@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
-import { PREFERENCIAS_PADRAO, type Livro, type Preferencias } from '@nucleo/tipos'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { PREFERENCIAS_PADRAO, type EstadoDaNuvem, type Livro, type Preferencias } from '@nucleo/tipos'
 import { api, temaEfetivo } from './api'
 import { AjustesLeitura } from './componentes/AjustesLeitura'
+import { DialogoDeDownload, type Baixando } from './componentes/BaixarDaNuvem'
+import { DialogoDaConta } from './componentes/Conta'
 import { Dock, type Destino, type Navegacao } from './componentes/Dock'
 import { Icone } from './componentes/Icone'
-import { DialogosDeImportacao, useImportacao } from './componentes/Importacao'
+import { comCapa, DialogosDeImportacao, useImportacao } from './componentes/Importacao'
 import { TelaBiblioteca } from './telas/Biblioteca'
 import { TelaInicio } from './telas/Inicio'
 import { TelaLeitor } from './telas/Leitor'
@@ -61,6 +63,11 @@ export function App() {
   const [livros, setLivros] = useState<Livro[]>([])
   const [tela, setTela] = useState<Tela>({ tipo: 'carregando' })
   const [ajustesAbertos, setAjustesAbertos] = useState(false)
+  const [nuvem, setNuvem] = useState<EstadoDaNuvem | null>(null)
+  const [contaAberta, setContaAberta] = useState(false)
+  const [baixando, setBaixando] = useState<(Baixando & { origem: Destino }) | null>(null)
+  const livrosAtuais = useRef<Livro[]>([])
+  livrosAtuais.current = livros
   // Buscar, no dock, pede o cursor no campo de busca da biblioteca; a biblioteca avisa quando atendeu.
   const [focarBusca, setFocarBusca] = useState(false)
   const escuroNoSistema = usarMidia('(prefers-color-scheme: dark)')
@@ -98,6 +105,26 @@ export function App() {
     }
   }, [recarregar])
 
+  // A nuvem: o botão da conta acompanha, e a biblioteca se atualiza quando chega algo de outro aparelho.
+  useEffect(() => {
+    void api.nuvem.estado().then(setNuvem)
+    let espera: number | undefined
+    const pararNuvem = api.nuvem.aoMudar((estado, livrosMudaram) => {
+      setNuvem(estado)
+      if (!livrosMudaram) return
+      window.clearTimeout(espera)
+      espera = window.setTimeout(() => void recarregar(), 300)
+    })
+    const pararAndamento = api.nuvem.aoAndamento((id, andamento) =>
+      setBaixando(atual => (atual && atual.livro.id === id ? { ...atual, andamento } : atual)),
+    )
+    return () => {
+      pararNuvem()
+      pararAndamento()
+      window.clearTimeout(espera)
+    }
+  }, [recarregar])
+
   // Ao abrir: se você fechou o app dentro de um livro, ele reabre dentro do livro.
   useEffect(() => {
     void (async () => {
@@ -113,10 +140,31 @@ export function App() {
     })()
   }, [])
 
-  const abrir = useCallback(async (id: string, origem: Destino) => {
-    const livro = await api.leitura.abrir(id)
-    if (livro) setTela({ tipo: 'leitor', livro, origem })
-  }, [])
+  /** Um livro que está só na nuvem desce primeiro; depois abre onde você parou. */
+  const baixarEAbrir = useCallback(
+    async (livro: Livro, origem: Destino) => {
+      setBaixando({ livro, andamento: null, erro: null, origem })
+      const resultado = await api.nuvem.baixar(livro.id)
+      if (!resultado.ok) return setBaixando({ livro, andamento: null, erro: resultado.mensagem, origem })
+      // Sem capa na nuvem (um PDF de outro aparelho que não gerou a sua), a primeira página vira capa.
+      await comCapa(resultado.livro)
+      await recarregar()
+      const aberto = await api.leitura.abrir(livro.id)
+      setBaixando(null)
+      if (aberto) setTela({ tipo: 'leitor', livro: aberto, origem })
+    },
+    [recarregar],
+  )
+
+  const abrir = useCallback(
+    async (id: string, origem: Destino) => {
+      const daLista = livrosAtuais.current.find(l => l.id === id)
+      if (daLista?.estado === 'na-nuvem') return baixarEAbrir(daLista, origem)
+      const livro = await api.leitura.abrir(id)
+      if (livro) setTela({ tipo: 'leitor', livro, origem })
+    },
+    [baixarEAbrir],
+  )
 
   const irPara = useCallback(
     async (destino: Destino) => {
@@ -159,6 +207,8 @@ export function App() {
       {tela.tipo === 'inicio' && (
         <TelaInicio
           livros={livros}
+          nuvem={nuvem}
+          aoAbrirConta={() => setContaAberta(true)}
           aoAbrir={id => void abrir(id, 'inicio')}
           aoVerBiblioteca={() => void irPara('biblioteca')}
           aoImportar={navegacao.aoImportar}
@@ -167,6 +217,8 @@ export function App() {
       {tela.tipo === 'biblioteca' && (
         <TelaBiblioteca
           livros={livros}
+          nuvem={nuvem}
+          aoAbrirConta={() => setContaAberta(true)}
           focarBusca={focarBusca}
           aoFocarBusca={() => setFocarBusca(false)}
           aoAbrir={id => void abrir(id, 'biblioteca')}
@@ -196,6 +248,14 @@ export function App() {
           aoMudarPreferencias={mudarPreferencias}
         />
       )}
+
+      <DialogoDaConta aberto={contaAberta} estado={nuvem} aoFechar={() => setContaAberta(false)} />
+
+      <DialogoDeDownload
+        estado={baixando}
+        aoFechar={() => setBaixando(null)}
+        aoTentarDeNovo={() => baixando && void baixarEAbrir(baixando.livro, baixando.origem)}
+      />
 
       <DialogosDeImportacao
         estado={importacao.estado}

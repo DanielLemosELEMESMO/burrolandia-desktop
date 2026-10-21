@@ -11,11 +11,12 @@ export const novaPastaDeDados = () => mkdtempSync(join(tmpdir(), 'burrolandia-e2
 
 /**
  * Abre o app. Sem `catalogo`, o app fica sem internet (nenhum teste depende do Open Library de
- * verdade); com `catalogo`, ele conversa com um catálogo de mentira (catalogo-falso.ts).
+ * verdade); com `catalogo`, ele conversa com um catálogo de mentira (catalogo-falso.ts). A nuvem fica
+ * desligada, a não ser que `nuvem` aponte para uma de mentira (nuvem-falsa.ts).
  */
 export async function abrirApp(
   pastaDados: string,
-  { catalogo }: { catalogo?: string } = {},
+  { catalogo, nuvem }: { catalogo?: string; nuvem?: string } = {},
 ): Promise<{ app: ElectronApplication; janela: Page }> {
   // Em contêiner (root) e no CI do Linux, o sandbox do Chromium não tem as permissões de que precisa.
   const semSandbox = process.getuid?.() === 0 || process.env.CI ? ['--no-sandbox'] : []
@@ -26,6 +27,7 @@ export async function abrirApp(
     env: {
       ...process.env,
       BURROLANDIA_DADOS: pastaDados,
+      BURROLANDIA_NUVEM: nuvem ?? 'desligada',
       ...(catalogo ? { BURROLANDIA_CATALOGO: catalogo } : { BURROLANDIA_SEM_INTERNET: '1' }),
     },
   })

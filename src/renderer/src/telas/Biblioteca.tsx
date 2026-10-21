@@ -1,11 +1,12 @@
 // A biblioteca inteira: busca, ordem, formato e duas vistas — grade para passear, lista para arrumar.
 
 import { useEffect, useRef, useState } from 'react'
-import type { Livro } from '@nucleo/tipos'
+import type { EstadoDaNuvem, Livro } from '@nucleo/tipos'
 import { organizarLivros, type FiltroDeFormato, type Ordem } from '@nucleo/organizar'
 import { haQuantoTempo } from '@nucleo/tempo'
 import { api } from '../api'
 import { Capa } from '../componentes/Capa'
+import { BotaoDaConta } from '../componentes/Conta'
 import { Dialogo } from '../componentes/Dialogo'
 import { EstadoVazio } from '../componentes/EstadoVazio'
 import { Icone } from '../componentes/Icone'
@@ -33,6 +34,16 @@ const porcentagem = (livro: Livro) => Math.round(livro.progresso * 100)
 const autores = (livro: Livro) => livro.autores.join(', ')
 const ultimaLeitura = (livro: Livro) =>
   livro.abertoEm ? `Lido ${haQuantoTempo(livro.abertoEm)}` : `Adicionado ${haQuantoTempo(livro.adicionadoEm)}`
+
+/** Onde os livros estão: neste computador, na sua conta, ou só na nuvem (descem ao abrir). */
+function onde(livros: Livro[], nuvem: EstadoDaNuvem | null) {
+  if (!nuvem?.conta) return 'Todos os livros estão guardados neste computador.'
+  const naNuvem = livros.filter(l => l.estado === 'na-nuvem').length
+  if (!naNuvem) return 'Todos os livros estão neste computador e na sua conta.'
+  return naNuvem === 1
+    ? '1 livro está só na nuvem: ele desce para este computador quando você abrir.'
+    : `${naNuvem} livros estão só na nuvem: cada um desce para este computador quando você abrir.`
+}
 
 /** O que o arquivo virou: EPUB, PDF com texto adaptado, ou PDF que só abre como foi impresso. */
 const comoLe = (livro: Livro) =>
@@ -70,6 +81,8 @@ function Progresso({ livro }: { livro: Livro }) {
 
 export function TelaBiblioteca({
   livros,
+  nuvem,
+  aoAbrirConta,
   focarBusca,
   aoFocarBusca,
   aoAbrir,
@@ -77,6 +90,8 @@ export function TelaBiblioteca({
   aoImportar,
 }: {
   livros: Livro[]
+  nuvem: EstadoDaNuvem | null
+  aoAbrirConta: () => void
   /** Buscar, no dock: põe o cursor no campo de busca e avisa que atendeu (para não repetir na próxima visita). */
   focarBusca: boolean
   aoFocarBusca: () => void
@@ -148,6 +163,7 @@ export function TelaBiblioteca({
     <div className="tela superficie-escura">
       <header className="tela-topo">
         <Assinatura />
+        <BotaoDaConta estado={nuvem} aoAbrir={aoAbrirConta} />
       </header>
       <main className="tela-conteudo" aria-label="Biblioteca" tabIndex={-1}>
         {livros.length === 0 ? (
@@ -159,8 +175,8 @@ export function TelaBiblioteca({
                 Sua biblioteca <span className="contagem">{livros.length}</span>
               </h1>
               <p className="onde-estao">
-                <Icone nome="computador" />
-                Todos os livros estão guardados neste computador.
+                <Icone nome={nuvem?.conta ? 'nuvem' : 'computador'} />
+                {onde(livros, nuvem)}
               </p>
             </div>
 
@@ -245,6 +261,12 @@ export function TelaBiblioteca({
                         <span className="selo-formato" aria-hidden="true">
                           {livro.formatoOriginal.toUpperCase()}
                         </span>
+                        {livro.estado === 'na-nuvem' && (
+                          <span className="selo-nuvem">
+                            <Icone nome="nuvem" />
+                            Na nuvem
+                          </span>
+                        )}
                       </span>
                       <span className="cartao-titulo">{livro.titulo}</span>
                       {livro.autores.length > 0 && <span className="cartao-autor">{autores(livro)}</span>}
@@ -275,8 +297,8 @@ export function TelaBiblioteca({
                       </span>
                       <span className="cartao-quando linha-quando">{ultimaLeitura(livro)}</span>
                       <span className="selo-info linha-onde">
-                        <Icone nome="computador" />
-                        Neste computador
+                        <Icone nome={livro.estado === 'na-nuvem' ? 'nuvem' : 'computador'} />
+                        {livro.estado === 'na-nuvem' ? 'Na nuvem' : 'Neste computador'}
                       </span>
                     </button>
                     {acoes(livro)}

@@ -18,6 +18,7 @@ import {
   type EstadoDaNuvem,
   type ResultadoDaConta,
   type ResultadoDoDownload,
+  type UsoDaNuvem,
 } from '@nucleo/tipos'
 import type { Banco, LivroSincronizavel } from './banco'
 import { MENSAGENS_DE_ERRO, nomeDaCapaNaNuvem, type Biblioteca } from './biblioteca'
@@ -502,6 +503,12 @@ export class Nuvem {
       if (geracao !== this.#geracao) return
       this.banco.marcarArquivoNaNuvem(livro.id, nome)
     }
+  }
+
+  /** Quanto a conta guarda na nuvem; null sem conta ou sem conexão. */
+  async uso(): Promise<UsoDaNuvem | null> {
+    if (!this.remoto || !this.#estado.conta) return null
+    return this.remoto.uso().catch(() => null)
   }
 
   /** Baixa o arquivo de um livro que está só na nuvem e prepara para ler. Dois pedidos viram um. */

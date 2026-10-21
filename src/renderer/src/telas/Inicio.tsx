@@ -1,9 +1,10 @@
 // O Início: o livro que você está lendo vem primeiro, a um clique; logo abaixo, os mexidos por último.
 
-import type { Livro } from '@nucleo/tipos'
+import type { EstadoDaNuvem, Livro } from '@nucleo/tipos'
 import { escolherDestaque, livrosRecentes } from '@nucleo/organizar'
 import { saudacao } from '@nucleo/tempo'
 import { Capa } from '../componentes/Capa'
+import { BotaoDaConta } from '../componentes/Conta'
 import { EstadoVazio } from '../componentes/EstadoVazio'
 import { Icone } from '../componentes/Icone'
 import { Assinatura } from '../componentes/Marca'
@@ -47,11 +48,15 @@ function Destaque({ livro, continuar, aoAbrir }: { livro: Livro; continuar: bool
 
 export function TelaInicio({
   livros,
+  nuvem,
+  aoAbrirConta,
   aoAbrir,
   aoVerBiblioteca,
   aoImportar,
 }: {
   livros: Livro[]
+  nuvem: EstadoDaNuvem | null
+  aoAbrirConta: () => void
   aoAbrir: (id: string) => void
   aoVerBiblioteca: () => void
   aoImportar: () => void
@@ -64,6 +69,7 @@ export function TelaInicio({
     <div className="tela superficie-escura">
       <header className="tela-topo">
         <Assinatura />
+        <BotaoDaConta estado={nuvem} aoAbrir={aoAbrirConta} />
       </header>
       <main className="tela-conteudo" aria-label="Início" tabIndex={-1}>
         {livros.length === 0 ? (

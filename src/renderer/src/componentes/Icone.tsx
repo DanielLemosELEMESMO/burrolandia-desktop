@@ -21,6 +21,9 @@ const CAMINHOS = {
   computador: 'M4 5h16v11H4zM9 20h6M12 16v4',
   recolher: 'M6 9l6 6 6-6',
   mostrar: 'M6 15l6-6 6 6',
+  nuvem: 'M7.5 18.5h9.6a4 4 0 0 0 .5-7.97A6 6 0 0 0 6 10.1a4.2 4.2 0 0 0 1.5 8.4z',
+  pessoa: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0',
+  sincronizar: 'M19.5 11A7.6 7.6 0 0 0 6 7.2L4.5 8.6M4.5 4.5v4.1h4.1M4.5 13A7.6 7.6 0 0 0 18 16.8l1.5-1.4M19.5 19.5v-4.1h-4.1',
 } as const
 
 export type NomeDoIcone = keyof typeof CAMINHOS

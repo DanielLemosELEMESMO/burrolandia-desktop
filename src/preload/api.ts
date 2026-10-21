@@ -1,18 +1,23 @@
 // A ponte entre a interface e o processo principal. Só tipos: a implementação está em index.ts.
 
 import type {
+  AndamentoDoDownload,
   AndamentoImportacao,
   CapaDaObra,
   CapaDoCatalogo,
   Edicao,
+  EstadoDaNuvem,
   ImagemDoLivro,
   Livro,
   Locator,
   ObraEncontrada,
   Preferencias,
+  ResultadoDaConta,
+  ResultadoDoDownload,
   ResultadoImportacao,
   Sessao,
   SobreLivro,
+  UsoDaNuvem,
 } from '../nucleo/tipos'
 
 export interface ApiBurrolandia {
@@ -67,5 +72,20 @@ export interface ApiBurrolandia {
     usarCapa(id: string, capaId?: number): Promise<SobreLivro | null>
     /** Avisa quando o catálogo muda um livro (reconheceu, trocou a capa…). */
     aoMudar(quando: (livroId: string) => void): () => void
+  }
+  /** A conta e a nuvem (parte 2). */
+  nuvem: {
+    estado(): Promise<EstadoDaNuvem>
+    entrar(email: string, senha: string): Promise<ResultadoDaConta>
+    criarConta(email: string, senha: string): Promise<ResultadoDaConta>
+    sair(): Promise<void>
+    sincronizar(): Promise<EstadoDaNuvem>
+    /** Quanto a conta guarda na nuvem; null sem conta ou sem conexão. */
+    uso(): Promise<UsoDaNuvem | null>
+    /** Baixa e prepara um livro que está só na nuvem. */
+    baixar(id: string): Promise<ResultadoDoDownload>
+    /** Avisa quando a nuvem muda (sincronizou, entrou, saiu); livros: a biblioteca mudou. */
+    aoMudar(quando: (estado: EstadoDaNuvem, livros: boolean) => void): () => void
+    aoAndamento(quando: (id: string, andamento: AndamentoDoDownload) => void): () => void
   }
 }

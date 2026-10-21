@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AndamentoImportacao } from '../nucleo/tipos'
+import type { AndamentoDoDownload, AndamentoImportacao, EstadoDaNuvem } from '../nucleo/tipos'
 import type { ApiBurrolandia } from './api'
 
 const api: ApiBurrolandia = {
@@ -48,6 +48,25 @@ const api: ApiBurrolandia = {
       const ouvinte = (_: unknown, livroId: string) => quando(livroId)
       ipcRenderer.on('catalogo:mudou', ouvinte)
       return () => ipcRenderer.off('catalogo:mudou', ouvinte)
+    },
+  },
+  nuvem: {
+    estado: () => ipcRenderer.invoke('nuvem:estado'),
+    entrar: (email, senha) => ipcRenderer.invoke('nuvem:entrar', email, senha),
+    criarConta: (email, senha) => ipcRenderer.invoke('nuvem:criar-conta', email, senha),
+    sair: () => ipcRenderer.invoke('nuvem:sair'),
+    sincronizar: () => ipcRenderer.invoke('nuvem:sincronizar'),
+    uso: () => ipcRenderer.invoke('nuvem:uso'),
+    baixar: id => ipcRenderer.invoke('nuvem:baixar', id),
+    aoMudar: quando => {
+      const ouvinte = (_: unknown, estado: EstadoDaNuvem, livros: boolean) => quando(estado, livros)
+      ipcRenderer.on('nuvem:mudou', ouvinte)
+      return () => ipcRenderer.off('nuvem:mudou', ouvinte)
+    },
+    aoAndamento: quando => {
+      const ouvinte = (_: unknown, id: string, andamento: AndamentoDoDownload) => quando(id, andamento)
+      ipcRenderer.on('nuvem:andamento', ouvinte)
+      return () => ipcRenderer.off('nuvem:andamento', ouvinte)
     },
   },
 }
