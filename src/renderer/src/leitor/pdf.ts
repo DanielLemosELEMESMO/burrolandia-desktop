@@ -3,7 +3,7 @@
 
 import { getDocument, GlobalWorkerOptions, OPS, type PDFDocumentProxy, type PDFPageProxy } from 'pdfjs-dist'
 import trabalhador from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { caixasDasImagens, capaNaPagina } from '@nucleo/pdf/imagens'
+import { caixasDasImagens, capaNaVisao, margensEmBranco } from '@nucleo/pdf/imagens'
 import { emPixels, INTEIRO, type Retangulo } from '@nucleo/recorte'
 
 GlobalWorkerOptions.workerSrc = trabalhador
@@ -50,23 +50,22 @@ const ALTURA_DA_CAPA = 900
 const ALTURA_PARA_RECORTAR = 1600
 const ALTURA_MAXIMA = 3200
 
-/** Onde está a capa dentro da página (a maior imagem em pé), em frações; null se a página toda serve. */
+/** Onde está a capa dentro da página (a maior imagem em pé na tela), em frações; null se a página toda serve. */
 export async function capaDentroDaPagina(pagina: PDFPageProxy): Promise<Retangulo | null> {
   const { fnArray, argsArray } = await pagina.getOperatorList()
-  const [x1, y1, x2, y2] = pagina.view
-  const caixa = capaNaPagina(caixasDasImagens(fnArray, argsArray, OPS), { x: x1, y: y1, largura: x2 - x1, altura: y2 - y1 })
-  if (!caixa) return null
   // A janela de visão cuida da rotação da página e da origem fora do zero.
-  const visao = pagina.getViewport({ scale: 1 })
-  const [a, b] = visao.convertToViewportPoint(caixa.x, caixa.y) as [number, number]
-  const [c, d] = visao.convertToViewportPoint(caixa.x + caixa.largura, caixa.y + caixa.altura) as [number, number]
-  const [esquerda, topo] = [Math.min(a, c), Math.min(b, d)]
-  return {
-    x: esquerda / visao.width,
-    y: topo / visao.height,
-    largura: Math.abs(c - a) / visao.width,
-    altura: Math.abs(d - b) / visao.height,
-  }
+  return capaNaVisao(caixasDasImagens(fnArray, argsArray, OPS), pagina.getViewport({ scale: 1 }))
+}
+
+/**
+ * A capa que vale recortar: a imagem achada, se fora dela a página estiver em branco (no máximo uma
+ * ou duas linhas de texto, como o aviso de OCR). Com título, autor ou texto em volta, a página
+ * inteira é a capa.
+ */
+function capaParaRecortar(canvas: HTMLCanvasElement, capa: Retangulo | null): Retangulo | null {
+  const contexto = capa && canvas.getContext('2d', { willReadFrequently: true })
+  if (!capa || !contexto) return null
+  return margensEmBranco(contexto.getImageData(0, 0, canvas.width, canvas.height), capa) ? capa : null
 }
 
 /** A página inteira num canvas fora da tela, com a altura pedida em pixels (até um limite). */
@@ -86,13 +85,14 @@ async function emBlob(canvas: HTMLCanvasElement, qualidade: number): Promise<Blo
   return blob
 }
 
-/** Um pedaço do canvas (em frações) num canvas novo. */
-function recortar(canvas: HTMLCanvasElement, recorte: Retangulo): HTMLCanvasElement {
+/** Um pedaço do canvas (em frações) num canvas novo, com no máximo `alturaMaxima` pixels de altura. */
+function recortar(canvas: HTMLCanvasElement, recorte: Retangulo, alturaMaxima = Infinity): HTMLCanvasElement {
   const px = emPixels(recorte, canvas.width, canvas.height)
+  const escala = Math.min(1, alturaMaxima / px.altura)
   const pedaco = document.createElement('canvas')
-  pedaco.width = px.largura
-  pedaco.height = px.altura
-  pedaco.getContext('2d')?.drawImage(canvas, px.x, px.y, px.largura, px.altura, 0, 0, px.largura, px.altura)
+  pedaco.width = Math.max(1, Math.round(px.largura * escala))
+  pedaco.height = Math.max(1, Math.round(px.altura * escala))
+  pedaco.getContext('2d')?.drawImage(canvas, px.x, px.y, px.largura, px.altura, 0, 0, pedaco.width, pedaco.height)
   return pedaco
 }
 
@@ -104,9 +104,10 @@ export async function gerarCapaDoPdf(url: string): Promise<Uint8Array> {
   const { pdf, fechar } = await abrirPdf(url)
   try {
     const pagina = await pdf.getPage(1)
-    const capa = await capaDentroDaPagina(pagina).catch(() => null)
-    const canvas = await desenharNaAltura(pagina, ALTURA_DA_CAPA / (capa?.altura ?? 1))
-    const blob = await emBlob(capa ? recortar(canvas, capa) : canvas, 0.85)
+    const achada = await capaDentroDaPagina(pagina).catch(() => null)
+    const canvas = await desenharNaAltura(pagina, ALTURA_DA_CAPA / (achada?.altura ?? 1))
+    const recorte = capaParaRecortar(canvas, achada) ?? INTEIRO
+    const blob = await emBlob(recortar(canvas, recorte, ALTURA_DA_CAPA), 0.85)
     return new Uint8Array(await blob.arrayBuffer())
   } finally {
     await fechar()
@@ -116,8 +117,9 @@ export async function gerarCapaDoPdf(url: string): Promise<Uint8Array> {
 /** Uma página pronta para o recorte: a imagem (URL de blob, quem usa libera) e a capa achada nela. */
 export async function paginaParaRecortar(pdf: PDFDocumentProxy, numero: number) {
   const pagina = await pdf.getPage(numero)
-  const selecao = (await capaDentroDaPagina(pagina).catch(() => null)) ?? INTEIRO
+  const achada = await capaDentroDaPagina(pagina).catch(() => null)
   const canvas = await desenharNaAltura(pagina, ALTURA_PARA_RECORTAR)
+  const selecao = capaParaRecortar(canvas, achada) ?? INTEIRO
   const url = URL.createObjectURL(await emBlob(canvas, 0.92))
   return { url, largura: canvas.width, altura: canvas.height, selecao }
 }

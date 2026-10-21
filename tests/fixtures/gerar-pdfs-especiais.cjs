@@ -3,7 +3,9 @@
 //     programas gravam assim; sem limpeza, isso quebra o XML do EPUB gerado);
 //   - paisagem.pdf: páginas 16:9, como slides (páginas baixas revelam erros de "página atual");
 //   - capa-com-margem.pdf: a capa é uma imagem (300×450) no meio de uma página branca, com uma
-//     linha de texto em cima, como em muitos PDFs digitalizados.
+//     linha de texto em cima, como em muitos PDFs digitalizados;
+//   - capa-em-formulario, capa-girada, capa-com-titulo, artigo e capa-em-faixas: os casos difíceis
+//     do recorte automático da capa (ver lá embaixo).
 // Rode com: node tests/fixtures/gerar-pdfs-especiais.cjs
 
 const { readFileSync, writeFileSync } = require('node:fs')
@@ -119,7 +121,98 @@ function capaComMargem() {
   ])
 }
 
-writeFileSync(join(__dirname, 'pdf', 'titulo-com-nulo.pdf'), comNulo)
-writeFileSync(join(__dirname, 'pdf', 'paisagem.pdf'), paisagem)
-writeFileSync(join(__dirname, 'pdf', 'capa-com-margem.pdf'), capaComMargem())
-console.log('gerados titulo-com-nulo.pdf, paisagem.pdf e capa-com-margem.pdf')
+// Capas difíceis, uma página cada (achadas na revisão do recorte automático). A imagem é a mesma
+// capa vermelha 300 × 450 e a página, 420 × 595, salvo na girada.
+const jpegDaCapa = () => readFileSync(join(__dirname, 'capa-vermelha.jpg'))
+const imagemDaCapa = () =>
+  `<< /Type /XObject /Subtype /Image /Width 300 /Height 450 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegDaCapa().length} >>\nstream\n${jpegDaCapa().toString('latin1')}\nendstream`
+const fluxoCom = (conteudo, extra) => `<< /Length ${Buffer.byteLength(conteudo, 'latin1')}${extra} >>\nstream\n${conteudo}\nendstream`
+
+/** Uma página só: 1 catálogo, 2 informações, 3 páginas, 4 fonte, 5 imagem, 6 página, 7 conteúdo, 8… extras. */
+function umaPagina({ titulo, caixa = '[0 0 420 595]', extraDaPagina = '', recursos, conteudo, extras = [] }) {
+  return montarPdf([
+    '<< /Type /Catalog /Pages 3 0 R >>',
+    `<< /Title (${titulo}) /Author (Fulana de Tal) >>`,
+    '<< /Type /Pages /Kids [6 0 R] /Count 1 >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+    imagemDaCapa(),
+    `<< /Type /Page /Parent 3 0 R /MediaBox ${caixa}${extraDaPagina} /Contents 7 0 R /Resources << /Font << /F1 4 0 R >> ${recursos} >> >>`,
+    fluxo(conteudo),
+    ...extras,
+  ])
+}
+
+// A imagem dentro de um formulário com /Matrix (escala 0,5) e grupo de transparência, como o InDesign
+// e o Skia gravam: na página, ela fica em (60, 80), 300 × 450.
+const capaEmFormulario = umaPagina({
+  titulo: 'Capa em Formulario',
+  recursos: '/XObject << /Fm1 8 0 R >>',
+  conteudo: [linha(10, 60, 560, 'Assim falou o teste'), 'q /Fm1 Do Q'].join('\n'),
+  extras: [
+    fluxoCom(
+      'q 600 0 0 900 120 160 cm /Im1 Do Q',
+      ' /Type /XObject /Subtype /Form /BBox [0 0 840 1190] /Matrix [0.5 0 0 0.5 0 0] /Group << /S /Transparency /I true >> /Resources << /XObject << /Im1 5 0 R >> >>',
+    ),
+  ],
+})
+
+// Página girada (/Rotate 90): deitada no arquivo, em pé na tela, com a capa em pé dentro dela.
+const capaGirada = umaPagina({
+  titulo: 'Capa Girada',
+  caixa: '[0 0 595 420]',
+  extraDaPagina: ' /Rotate 90',
+  recursos: '/XObject << /Im1 5 0 R >>',
+  conteudo: 'q 0 300 -450 0 515 60 cm /Im1 Do Q',
+})
+
+// Uma capa de verdade: título, subtítulo e autor em texto, a ilustração embaixo. Não é para recortar.
+const capaComTitulo = umaPagina({
+  titulo: 'Capa com Titulo',
+  recursos: '/XObject << /Im1 5 0 R >>',
+  conteudo: [
+    linha(34, 30, 545, 'O GRANDE TITULO'),
+    linha(22, 30, 510, 'Um subtitulo do livro'),
+    linha(18, 30, 478, 'FULANA DE TAL'),
+    'q 380 0 0 440 20 20 cm /Im1 Do Q',
+  ].join('\n'),
+})
+
+// Um artigo: a foto em pé ao lado de uma coluna de texto. Também não é para recortar.
+const artigo = umaPagina({
+  titulo: 'Artigo',
+  recursos: '/XObject << /Im1 5 0 R >>',
+  conteudo: [
+    linha(20, 20, 565, 'Titulo do artigo, na primeira pagina'),
+    'q 240 0 0 360 20 160 cm /Im1 Do Q',
+    ...Array.from({ length: 34 }, (_, i) => linha(9, 270, 540 - i * 15, `Linha ${i + 1} do artigo.`)),
+  ].join('\n'),
+})
+
+// A capa cortada em 100 faixas (cada uma uma imagem de 1 pixel cinza): 300 × 450 em (60, 80).
+function capaEmFaixas(faixas = 100) {
+  const altura = 450 / faixas
+  const nomes = Array.from({ length: faixas }, (_, i) => `/S${i} ${8 + i} 0 R`)
+  return umaPagina({
+    titulo: 'Capa em Faixas',
+    recursos: `/XObject << ${nomes.join(' ')} >>`,
+    conteudo: Array.from({ length: faixas }, (_, i) => `q 300 0 0 ${altura} 60 ${80 + i * altura} cm /S${i} Do Q`).join('\n'),
+    extras: Array.from(
+      { length: faixas },
+      (_, i) =>
+        `<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 1 >>\nstream\n${String.fromCharCode(40 + (i % 200))}\nendstream`,
+    ),
+  })
+}
+
+const gerados = {
+  'titulo-com-nulo.pdf': comNulo,
+  'paisagem.pdf': paisagem,
+  'capa-com-margem.pdf': capaComMargem(),
+  'capa-em-formulario.pdf': capaEmFormulario,
+  'capa-girada.pdf': capaGirada,
+  'capa-com-titulo.pdf': capaComTitulo,
+  'artigo.pdf': artigo,
+  'capa-em-faixas.pdf': capaEmFaixas(),
+}
+for (const [nome, bytes] of Object.entries(gerados)) writeFileSync(join(__dirname, 'pdf', nome), bytes)
+console.log(`gerados: ${Object.keys(gerados).join(', ')}`)

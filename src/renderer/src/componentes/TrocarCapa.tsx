@@ -1,9 +1,10 @@
 // "Trocar a capa": três caminhos. Do livro (uma página do PDF, com a imagem da capa já marcada, ou
 // uma imagem de dentro do EPUB), do catálogo (as capas da obra e das edições no Open Library) ou do
 // computador (uma imagem sua, escolhida ou arrastada). O que vem do livro e do computador passa
-// pelo recorte. Quem usa passa key={id do livro}: cada livro abre o seu diálogo.
+// pelo recorte. O conteúdo só existe com o diálogo aberto: cada abertura começa do zero, e o que já
+// foi carregado (páginas, imagens, capas) fica até fechar, sem carregar de novo ao trocar de aba.
 
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { INTEIRO, type Retangulo } from '@nucleo/recorte'
 import type { CapaDaObra, Livro } from '@nucleo/tipos'
 import { api, urlDoArquivo } from '../api'
@@ -24,6 +25,8 @@ interface Fonte extends ImagemParaRecortar {
   selecao: Retangulo
 }
 
+type Carga = 'carregando' | 'pronto' | 'falhou'
+
 const TIPOS_ACEITOS = ['image/jpeg', 'image/png', 'image/webp']
 
 /** Uma imagem (bytes ou arquivo) pronta para o recorte, com o tamanho de verdade. */
@@ -40,21 +43,22 @@ async function fonteDeBlob(blob: Blob): Promise<Fonte> {
   return { url, largura: imagem.naturalWidth, altura: imagem.naturalHeight, selecao: INTEIRO }
 }
 
-type AoEscolher = (fonte: Fonte) => void
-type AoFalhar = (mensagem: string) => void
-
-/** As primeiras páginas e a última de um PDF; a escolhida abre no recorte com a capa já marcada. */
-function PaginasDoPdf({ livro, aoEscolher, aoFalhar }: { livro: Livro; aoEscolher: AoEscolher; aoFalhar: AoFalhar }) {
+/** As primeiras páginas e a última de um PDF, em miniatura; o PDF fica aberto para preparar a escolhida. */
+function usarPaginasDoPdf(livro: Livro, querer: boolean) {
   const [miniaturas, setMiniaturas] = useState<{ numero: number; url: string }[]>([])
-  const [pronto, setPronto] = useState(false)
+  const [carga, setCarga] = useState<Carga>('carregando')
   const pdf = useRef<PdfAberto | null>(null)
 
   useEffect(() => {
+    if (!querer) return
     let ativo = true
+    let aberto: PdfAberto | null = null
     const urls: string[] = []
+    setMiniaturas([])
+    setCarga('carregando')
     void (async () => {
       try {
-        const aberto = await abrirPdf(urlDoArquivo(livro, livro.arquivoOriginal))
+        aberto = await abrirPdf(urlDoArquivo(livro, livro.arquivoOriginal))
         if (!ativo) return void aberto.fechar()
         pdf.current = aberto
         const total = aberto.pdf.numPages
@@ -65,56 +69,33 @@ function PaginasDoPdf({ livro, aoEscolher, aoFalhar }: { livro: Livro; aoEscolhe
           urls.push(url)
           setMiniaturas(atuais => [...atuais, { numero, url }])
         }
+        setCarga('pronto')
       } catch (erro) {
         console.warn('Não deu para abrir as páginas do PDF', erro)
-        if (ativo) aoFalhar('Não deu para abrir as páginas deste PDF.')
-      } finally {
-        if (ativo) setPronto(true)
+        if (ativo) setCarga('falhou')
       }
     })()
     return () => {
       ativo = false
       for (const url of urls) URL.revokeObjectURL(url)
-      void pdf.current?.fechar()
       pdf.current = null
+      void aberto?.fechar()
     }
-  }, [livro, aoFalhar])
+  }, [livro, querer])
 
-  const escolher = async (numero: number) => {
-    if (!pdf.current) return
-    try {
-      aoEscolher(await paginaParaRecortar(pdf.current.pdf, numero))
-    } catch (erro) {
-      console.warn('Não deu para preparar a página', erro)
-      aoFalhar('Não deu para abrir esta página.')
-    }
-  }
-
-  return (
-    <>
-      <p>Escolha a página onde está a capa. Se ela for uma imagem dentro da página, o recorte já começa nela.</p>
-      <ul className="trocar-capa-grade" aria-label="Páginas do livro" aria-busy={!pronto}>
-        {miniaturas.map(({ numero, url }) => (
-          <li key={numero}>
-            <button type="button" className="trocar-capa-opcao" onClick={() => void escolher(numero)}>
-              <img src={url} alt="" />
-              <span>Página {numero}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {!pronto && <p className="dica">Abrindo as páginas…</p>}
-    </>
-  )
+  return { miniaturas, carga, pdf }
 }
 
 /** As imagens de dentro do EPUB (a capa declarada primeiro). */
-function ImagensDoEpub({ livro, aoEscolher, aoFalhar }: { livro: Livro; aoEscolher: AoEscolher; aoFalhar: AoFalhar }) {
-  const [imagens, setImagens] = useState<{ nome: string; blob: Blob; url: string }[] | null>(null)
+function usarImagensDoEpub(livro: Livro, querer: boolean) {
+  const [imagens, setImagens] = useState<{ nome: string; blob: Blob; url: string }[]>([])
+  const [carga, setCarga] = useState<Carga>('carregando')
 
   useEffect(() => {
+    if (!querer) return
     let ativo = true
     const urls: string[] = []
+    setCarga('carregando')
     api.biblioteca
       .imagens(livro.id)
       .then(lista => {
@@ -127,51 +108,31 @@ function ImagensDoEpub({ livro, aoEscolher, aoFalhar }: { livro: Livro; aoEscolh
             return { nome, blob, url }
           }),
         )
+        setCarga('pronto')
       })
       .catch(erro => {
         console.warn('Não deu para ler as imagens do livro', erro)
-        if (ativo) aoFalhar('Não deu para ler as imagens deste livro.')
+        if (ativo) setCarga('falhou')
       })
     return () => {
       ativo = false
       for (const url of urls) URL.revokeObjectURL(url)
     }
-  }, [livro.id, aoFalhar])
+  }, [livro.id, querer])
 
-  if (!imagens) return <p className="dica">Procurando as imagens do livro…</p>
-  if (!imagens.length) return <p>Este livro não tem imagens que sirvam de capa. Tente o catálogo ou uma imagem sua.</p>
-  return (
-    <ul className="trocar-capa-grade" aria-label="Imagens do livro">
-      {imagens.map(({ nome, blob, url }, i) => (
-        <li key={nome}>
-          <button
-            type="button"
-            className="trocar-capa-opcao"
-            onClick={() =>
-              void fonteDeBlob(blob)
-                .then(aoEscolher)
-                .catch(() => aoFalhar('Não deu para abrir esta imagem.'))
-            }
-          >
-            <img src={url} alt="" />
-            <span>Imagem {i + 1}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  )
+  return { imagens, carga }
 }
 
-/** As capas da obra e das edições no catálogo; a escolhida vai inteira. */
-function DoCatalogo({ livro, ocupado, aoUsar }: { livro: Livro; ocupado: boolean; aoUsar: (capaId: number) => void }) {
+/** As capas da obra e das edições no catálogo, com as miniaturas chegando aos poucos. */
+function usarCapasDoCatalogo(livro: Livro, querer: boolean) {
   const [capas, setCapas] = useState<CapaDaObra[] | 'sem-conexao' | null>(null)
   const [miniaturas, setMiniaturas] = useState<Record<number, string>>({})
-  const [escolhida, setEscolhida] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!livro.obraId) return
+    if (!querer || !livro.obraId) return
     let ativo = true
     const urls: string[] = []
+    setCapas(null)
     void (async () => {
       const lista = await api.catalogo.capas(livro.id).catch(() => null)
       if (!ativo) return
@@ -189,62 +150,30 @@ function DoCatalogo({ livro, ocupado, aoUsar }: { livro: Livro; ocupado: boolean
       ativo = false
       for (const url of urls) URL.revokeObjectURL(url)
     }
-  }, [livro.id, livro.obraId])
+  }, [livro.id, livro.obraId, querer])
 
-  if (!livro.obraId) {
-    return <p>Este livro ainda não foi reconhecido no catálogo. Em “Sobre este livro” você procura a obra; depois as capas das edições aparecem aqui.</p>
-  }
-  if (capas === null) return <p className="dica">Procurando as capas no Open Library…</p>
-  if (capas === 'sem-conexao') return <p>Não deu para falar com o Open Library agora. Confira a internet e abra de novo.</p>
-  if (!capas.length) return <p>O catálogo não tem capas desta obra. Tente uma imagem sua.</p>
-  return (
-    <>
-      <ul className="trocar-capa-grade" aria-label="Capas do catálogo">
-        {capas.map(({ capaId, legenda }) => (
-          <li key={capaId}>
-            <button
-              type="button"
-              className="trocar-capa-opcao"
-              aria-pressed={escolhida === capaId}
-              onClick={() => setEscolhida(capaId)}
-            >
-              {miniaturas[capaId] ? <img src={miniaturas[capaId]} alt="" /> : <span className="trocar-capa-vazia" />}
-              <span>{legenda}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div className="trocar-capa-acoes">
-        <button
-          type="button"
-          className="botao principal"
-          disabled={escolhida === null || ocupado}
-          onClick={() => escolhida !== null && aoUsar(escolhida)}
-        >
-          Usar esta capa
-        </button>
-      </div>
-    </>
-  )
+  return { capas, miniaturas }
 }
 
-function DoComputador({ aoAbrir }: { aoAbrir: (arquivo: File | undefined) => void }) {
+/** Um botão de opção que não perde o foco enquanto o diálogo está ocupado (só não faz nada). */
+function Opcao({ rotulo, imagem, ocupado, pressionado, aoEscolher }: {
+  rotulo: string
+  imagem: string | undefined
+  ocupado: boolean
+  pressionado?: boolean
+  aoEscolher: () => void
+}) {
   return (
-    <div className="trocar-capa-computador">
-      <p>Escolha uma imagem do computador (JPEG, PNG ou WebP), ou arraste uma para cá. Depois você recorta.</p>
-      <label className="botao principal trocar-capa-arquivo">
-        Escolher uma imagem
-        <input
-          type="file"
-          accept={TIPOS_ACEITOS.join(',')}
-          className="so-leitor-de-tela"
-          onChange={evento => {
-            aoAbrir(evento.target.files?.[0])
-            evento.target.value = ''
-          }}
-        />
-      </label>
-    </div>
+    <button
+      type="button"
+      className="trocar-capa-opcao"
+      aria-disabled={ocupado || undefined}
+      aria-pressed={pressionado}
+      onClick={() => !ocupado && aoEscolher()}
+    >
+      {imagem ? <img src={imagem} alt="" /> : <span className="trocar-capa-vazia" />}
+      <span>{rotulo}</span>
+    </button>
   )
 }
 
@@ -257,11 +186,33 @@ export function TrocarCapa({
   aoFechar: () => void
   aoTrocar: (livro: Livro) => void
 }) {
+  return (
+    <Dialogo aberto={!!livro} titulo="Trocar a capa" aoFechar={aoFechar} comFechar>
+      {livro && <Conteudo livro={livro} aoFechar={aoFechar} aoTrocar={aoTrocar} />}
+    </Dialogo>
+  )
+}
+
+function Conteudo({ livro, aoFechar, aoTrocar }: { livro: Livro; aoFechar: () => void; aoTrocar: (livro: Livro) => void }) {
   const [origem, setOrigem] = useState<Origem>('livro')
+  // As abas já abertas continuam carregadas até o diálogo fechar.
+  const [vistas, setVistas] = useState<Origem[]>(['livro'])
   const [fonte, setFonte] = useState<Fonte | null>(null)
   const [selecao, setSelecao] = useState<Retangulo>(INTEIRO)
+  const [preparando, setPreparando] = useState(false)
   const [andamento, setAndamento] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  const [escolhidaNoCatalogo, setEscolhidaNoCatalogo] = useState<number | null>(null)
+  const raiz = useRef<HTMLDivElement>(null)
+  // Cada preparação tem um número; uma que termina depois de outra escolha (ou de trocar de aba) não vale.
+  const pedido = useRef(0)
+  const ocupado = useRef(false)
+  const voltou = useRef(false)
+
+  const ehPdf = livro.formatoOriginal === 'pdf'
+  const paginas = usarPaginasDoPdf(livro, ehPdf && vistas.includes('livro'))
+  const imagens = usarImagensDoEpub(livro, !ehPdf && vistas.includes('livro'))
+  const catalogo = usarCapasDoCatalogo(livro, vistas.includes('catalogo'))
 
   // A imagem do recorte é um blob: sai da memória quando troca ou fecha.
   useEffect(
@@ -271,126 +222,267 @@ export function TrocarCapa({
     [fonte],
   )
 
-  if (!livro) return <Dialogo aberto={false} titulo="Trocar a capa" aoFechar={aoFechar}>{null}</Dialogo>
+  // Entrando no recorte, o foco vai para a seleção (as setas já funcionam); voltando, para a aba.
+  useEffect(() => {
+    if (fonte) raiz.current?.querySelector<HTMLElement>('.recorte-selecao')?.focus()
+    else if (voltou.current) raiz.current?.querySelector<HTMLInputElement>('input[name="origem-da-capa"]:checked')?.focus()
+    voltou.current = false
+  }, [fonte])
 
-  const escolher = (nova: Fonte) => {
+  const preparar = useCallback(async (carregar: () => Promise<Fonte>, falha: string) => {
+    if (ocupado.current) return
+    const meu = ++pedido.current
+    ocupado.current = true
+    setPreparando(true)
     setErro(null)
-    setSelecao(nova.selecao)
-    setFonte(nova)
+    try {
+      const nova = await carregar()
+      if (meu !== pedido.current) return URL.revokeObjectURL(nova.url)
+      setSelecao(nova.selecao)
+      setFonte(nova)
+    } catch (falhou) {
+      console.warn('Não deu para preparar a imagem', falhou)
+      if (meu === pedido.current) setErro(falha)
+    } finally {
+      if (meu === pedido.current) {
+        ocupado.current = false
+        setPreparando(false)
+      }
+    }
+  }, [])
+
+  const abrirArquivo = useCallback(
+    (arquivo: File | undefined) => {
+      if (!arquivo) return
+      if (!TIPOS_ACEITOS.includes(arquivo.type)) return setErro('Use uma imagem JPEG, PNG ou WebP.')
+      void preparar(() => fonteDeBlob(arquivo), 'Não deu para abrir esta imagem.')
+    },
+    [preparar],
+  )
+
+  // Uma imagem arrastada para qualquer parte do diálogo vira a capa; não vai para a importação de livros.
+  useEffect(() => {
+    const dialogo = raiz.current?.closest('dialog')
+    if (!dialogo) return
+    const arrasto = (evento: DragEvent) => {
+      if (!Array.from(evento.dataTransfer?.types ?? []).includes('Files')) return
+      evento.stopPropagation()
+      evento.preventDefault()
+      if (evento.type === 'drop') abrirArquivo(evento.dataTransfer?.files[0])
+    }
+    const tipos = ['dragenter', 'dragover', 'dragleave', 'drop'] as const
+    for (const tipo of tipos) dialogo.addEventListener(tipo, arrasto)
+    return () => {
+      for (const tipo of tipos) dialogo.removeEventListener(tipo, arrasto)
+    }
+  }, [abrirArquivo])
+
+  const mudarOrigem = (valor: Origem) => {
+    // Uma página que estava sendo preparada para outra aba não abre mais.
+    pedido.current++
+    ocupado.current = false
+    setPreparando(false)
+    setErro(null)
+    setOrigem(valor)
+    setVistas(atuais => (atuais.includes(valor) ? atuais : [...atuais, valor]))
   }
 
-  const abrirArquivo = (arquivo: File | undefined) => {
-    if (!arquivo) return
-    if (!TIPOS_ACEITOS.includes(arquivo.type)) return setErro('Use uma imagem JPEG, PNG ou WebP.')
-    fonteDeBlob(arquivo)
-      .then(escolher)
-      .catch(() => setErro('Não deu para abrir esta imagem.'))
-  }
-
-  /** Guarda a capa nova; null ou a mesma capa de antes quer dizer que não deu. */
-  const trocar = async (mensagem: string, acao: () => Promise<Livro | null | undefined>) => {
+  /** Guarda a capa nova. A mesma imagem de antes já é a capa: só fecha. */
+  const trocar = async (mensagem: string, acao: () => Promise<Livro | null | undefined>, falha: string) => {
     setAndamento(mensagem)
     setErro(null)
     try {
       const depois = await acao()
-      if (!depois || depois.capa === livro.capa) return setErro('Não deu para usar esta imagem como capa. Tente outra.')
-      aoTrocar(depois)
+      if (!depois) return setErro(falha)
+      if (depois.capa !== livro.capa) aoTrocar(depois)
       aoFechar()
-    } catch (falha) {
-      console.warn('Não deu para trocar a capa', falha)
+    } catch (falhou) {
+      console.warn('Não deu para trocar a capa', falhou)
       setErro('Algo deu errado ao trocar a capa. Tente de novo.')
     } finally {
       setAndamento(null)
     }
   }
 
-  // Uma imagem arrastada para o diálogo vira a capa; não vai para a importação de livros.
-  const arrasto = (evento: DragEvent) => {
-    evento.stopPropagation()
-    evento.preventDefault()
-    if (evento.type === 'drop') abrirArquivo(evento.dataTransfer.files[0])
-  }
+  const status = andamento ?? (preparando ? 'Preparando a imagem…' : '')
+  const ocupadoAgora = preparando || !!andamento
 
   return (
-    <Dialogo aberto titulo="Trocar a capa" aoFechar={aoFechar} comFechar>
-      <div
-        className="trocar-capa"
-        onDragEnter={arrasto}
-        onDragOver={arrasto}
-        onDragLeave={arrasto}
-        onDrop={arrasto}
-      >
-        <p className="so-leitor-de-tela" role="status">
-          {andamento ?? ''}
-        </p>
-        {fonte ? (
-          <>
-            <Recorte imagem={fonte} selecao={selecao} aoMudar={setSelecao} />
-            <div className="trocar-capa-acoes">
-              <button type="button" className="botao" onClick={() => setFonte(null)}>
-                Voltar
-              </button>
-              <button
-                type="button"
-                className="botao principal"
-                disabled={!!andamento}
-                onClick={() =>
-                  void trocar('Guardando a capa…', async () => api.biblioteca.salvarCapa(livro.id, await recortarEmJpeg(fonte, selecao)))
-                }
-              >
-                Usar como capa
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="trocar-capa-titulo">{livro.titulo}</p>
-            <div className="segmentos" role="radiogroup" aria-label="De onde vem a capa">
-              {ORIGENS.map(([valor, rotulo]) => (
-                <label key={valor} className="segmento">
-                  <input
-                    type="radio"
-                    name="origem-da-capa"
-                    checked={origem === valor}
-                    onChange={() => {
-                      setErro(null)
-                      setOrigem(valor)
-                    }}
-                  />
-                  <span>{rotulo}</span>
-                </label>
-              ))}
-            </div>
-            {origem === 'livro' &&
-              (livro.formatoOriginal === 'pdf' ? (
-                <PaginasDoPdf livro={livro} aoEscolher={escolher} aoFalhar={setErro} />
+    <div ref={raiz} className="trocar-capa">
+      <p className="so-leitor-de-tela" role="status">
+        {status}
+      </p>
+      {fonte ? (
+        <>
+          <Recorte imagem={fonte} selecao={selecao} aoMudar={setSelecao} />
+          <div className="trocar-capa-acoes">
+            <button
+              type="button"
+              className="botao"
+              onClick={() => {
+                voltou.current = true
+                setFonte(null)
+              }}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              className="botao principal"
+              aria-disabled={!!andamento || undefined}
+              onClick={() =>
+                !andamento &&
+                void trocar(
+                  'Guardando a capa…',
+                  async () => api.biblioteca.salvarCapa(livro.id, await recortarEmJpeg(fonte, selecao)),
+                  'Não deu para usar esta imagem como capa. Tente outra.',
+                )
+              }
+            >
+              Usar como capa
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="trocar-capa-titulo">{livro.titulo}</p>
+          <div className="segmentos" role="radiogroup" aria-label="De onde vem a capa">
+            {ORIGENS.map(([valor, rotulo]) => (
+              <label key={valor} className="segmento">
+                <input type="radio" name="origem-da-capa" checked={origem === valor} onChange={() => mudarOrigem(valor)} />
+                <span>{rotulo}</span>
+              </label>
+            ))}
+          </div>
+
+          {origem === 'livro' && ehPdf && (
+            <>
+              <p>Escolha a página onde está a capa. Se ela for uma imagem dentro da página, o recorte já começa nela.</p>
+              {paginas.carga === 'falhou' ? (
+                <p>Não deu para abrir as páginas deste PDF.</p>
               ) : (
-                <ImagensDoEpub livro={livro} aoEscolher={escolher} aoFalhar={setErro} />
-              ))}
-            {origem === 'catalogo' && (
-              <DoCatalogo
-                livro={livro}
-                ocupado={!!andamento}
-                aoUsar={capaId =>
-                  void trocar('Baixando a capa…', async () => (await api.catalogo.usarCapa(livro.id, capaId))?.livro)
-                }
-              />
-            )}
-            {origem === 'computador' && <DoComputador aoAbrir={abrirArquivo} />}
-          </>
-        )}
-        {andamento && (
-          <p className="sobre-andamento" aria-hidden="true">
-            <span className="girando" />
-            {andamento}
-          </p>
-        )}
-        {erro && (
-          <p className="trocar-capa-erro" role="alert">
-            {erro}
-          </p>
-        )}
-      </div>
-    </Dialogo>
+                <ul className="trocar-capa-grade" aria-label="Páginas do livro" aria-busy={paginas.carga === 'carregando'}>
+                  {paginas.miniaturas.map(({ numero, url }) => (
+                    <li key={numero}>
+                      <Opcao
+                        rotulo={`Página ${numero}`}
+                        imagem={url}
+                        ocupado={ocupadoAgora}
+                        aoEscolher={() => {
+                          const pdf = paginas.pdf.current?.pdf
+                          if (pdf) void preparar(() => paginaParaRecortar(pdf, numero), 'Não deu para abrir esta página.')
+                        }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {paginas.carga === 'carregando' && <p className="dica">Abrindo as páginas…</p>}
+            </>
+          )}
+
+          {origem === 'livro' &&
+            !ehPdf &&
+            (imagens.carga === 'carregando' ? (
+              <p className="dica">Procurando as imagens do livro…</p>
+            ) : imagens.carga === 'falhou' ? (
+              <p>Não deu para ler as imagens deste livro.</p>
+            ) : !imagens.imagens.length ? (
+              <p>Este livro não tem imagens que sirvam de capa. Tente o catálogo ou uma imagem sua.</p>
+            ) : (
+              <ul className="trocar-capa-grade" aria-label="Imagens do livro">
+                {imagens.imagens.map(({ nome, blob, url }, i) => (
+                  <li key={nome}>
+                    <Opcao
+                      rotulo={`Imagem ${i + 1}`}
+                      imagem={url}
+                      ocupado={ocupadoAgora}
+                      aoEscolher={() => void preparar(() => fonteDeBlob(blob), 'Não deu para abrir esta imagem.')}
+                    />
+                  </li>
+                ))}
+              </ul>
+            ))}
+
+          {origem === 'catalogo' &&
+            (!livro.obraId ? (
+              <p>
+                Este livro ainda não foi reconhecido no catálogo. Em “Sobre este livro” você procura a obra; depois as capas das
+                edições aparecem aqui.
+              </p>
+            ) : catalogo.capas === null ? (
+              <p className="dica">Procurando as capas no Open Library…</p>
+            ) : catalogo.capas === 'sem-conexao' ? (
+              <p>Não deu para falar com o Open Library agora. Confira a internet e abra de novo.</p>
+            ) : !catalogo.capas.length ? (
+              <p>O catálogo não tem capas desta obra. Tente uma imagem sua.</p>
+            ) : (
+              <>
+                <ul className="trocar-capa-grade" aria-label="Capas do catálogo">
+                  {catalogo.capas.map(({ capaId, legenda }) => (
+                    <li key={capaId}>
+                      <Opcao
+                        rotulo={legenda}
+                        imagem={catalogo.miniaturas[capaId]}
+                        ocupado={false}
+                        pressionado={escolhidaNoCatalogo === capaId}
+                        aoEscolher={() => setEscolhidaNoCatalogo(capaId)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+                <div className="trocar-capa-acoes">
+                  <button
+                    type="button"
+                    className="botao principal"
+                    disabled={escolhidaNoCatalogo === null}
+                    aria-disabled={!!andamento || undefined}
+                    onClick={() =>
+                      escolhidaNoCatalogo !== null &&
+                      !andamento &&
+                      void trocar(
+                        'Baixando a capa…',
+                        async () => (await api.catalogo.usarCapa(livro.id, escolhidaNoCatalogo))?.livro,
+                        'Não deu para baixar esta capa do catálogo. Confira a internet e tente de novo.',
+                      )
+                    }
+                  >
+                    Usar esta capa
+                  </button>
+                </div>
+              </>
+            ))}
+
+          {origem === 'computador' && (
+            <div className="trocar-capa-computador">
+              <p>Escolha uma imagem do computador (JPEG, PNG ou WebP), ou arraste uma para cá. Depois você recorta.</p>
+              <label className="botao principal trocar-capa-arquivo">
+                Escolher uma imagem
+                <input
+                  type="file"
+                  accept={TIPOS_ACEITOS.join(',')}
+                  className="so-leitor-de-tela"
+                  onChange={evento => {
+                    abrirArquivo(evento.target.files?.[0])
+                    evento.target.value = ''
+                  }}
+                />
+              </label>
+            </div>
+          )}
+        </>
+      )}
+      {status && (
+        <p className="sobre-andamento" aria-hidden="true">
+          <span className="girando" />
+          {status}
+        </p>
+      )}
+      {erro && (
+        <p className="trocar-capa-erro" role="alert">
+          {erro}
+        </p>
+      )}
+    </div>
   )
 }

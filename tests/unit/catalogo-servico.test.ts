@@ -261,6 +261,20 @@ describe('Catalogo', () => {
     expect(existsSync(join(pasta, 'livros', livro.id, livro.capa!))).toBe(false)
   })
 
+  it('sem conexão, usar a capa do catálogo devolve null e a capa do livro fica', async () => {
+    const livro = await importar(livros.domCasmurro)
+    await catalogo().reconhecer(livro.id)
+    const semConexao = new ClienteOpenLibrary(
+      async () => {
+        throw new TypeError('fetch failed')
+      },
+      undefined,
+      0,
+    )
+    expect(await catalogo(semConexao).usarCapaDoCatalogo(livro.id)).toBeNull()
+    expect(banco.obterLivro(livro.id)?.capa).toBe(livro.capa)
+  })
+
   it('reconhece os pendentes ao abrir o app, e para no primeiro sinal de sem conexão', async () => {
     let pedidos = 0
     const falhando = new ClienteOpenLibrary(

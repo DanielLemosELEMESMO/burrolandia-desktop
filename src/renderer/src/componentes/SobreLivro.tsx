@@ -220,7 +220,8 @@ export function SobreLivro({
 
   /** Ações que mudam o livro: mostram o resultado e voltam para os detalhes. */
   const guardar = async (mensagem: string, acao: () => Promise<Sobre | null>): Promise<void> => {
-    const depois = await executar(mensagem, acao, () => false, () => void guardar(mensagem, acao))
+    // null: não deu (sem conexão, por exemplo); o painel oferece tentar de novo.
+    const depois = await executar(mensagem, acao, resultado => resultado === null, () => void guardar(mensagem, acao))
     if (depois) {
       setSobre(depois)
       mudarVista('detalhes')

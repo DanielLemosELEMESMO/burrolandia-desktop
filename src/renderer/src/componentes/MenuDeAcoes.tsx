@@ -73,7 +73,9 @@ export function MenuDeAcoes({ rotulo, acoes }: { rotulo: string; acoes: Acao[] }
               role="menuitem"
               className={acao.perigosa ? 'menu-item perigoso' : 'menu-item'}
               onClick={() => {
-                fechar(false)
+                // O foco volta ao botão do menu antes de a ação abrir um diálogo: fechando o diálogo,
+                // é para ele que o foco volta (e não para um item que já saiu da tela).
+                fechar()
                 acao.aoEscolher()
               }}
             >

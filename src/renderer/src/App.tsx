@@ -18,9 +18,12 @@ function usarArrastar(aoSoltar: (arquivos: FileList) => void) {
   useEffect(() => {
     let profundidade = 0
     const temArquivo = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
+    // Com um diálogo aberto, o arquivo não vira livro por trás dele (o de capa trata o seu).
+    const comDialogo = () => !!document.querySelector('dialog[open]')
     const entrar = (e: DragEvent) => {
       if (!temArquivo(e)) return
       e.preventDefault()
+      if (comDialogo()) return
       profundidade++
       setArrastando(true)
     }
@@ -37,7 +40,7 @@ function usarArrastar(aoSoltar: (arquivos: FileList) => void) {
       // Texto arrastado (para a busca, por exemplo) segue o caminho normal; só arquivos viram livro.
       if (!temArquivo(e)) return
       e.preventDefault()
-      if (e.dataTransfer?.files.length) aoSoltar(e.dataTransfer.files)
+      if (e.dataTransfer?.files.length && !comDialogo()) aoSoltar(e.dataTransfer.files)
     }
     window.addEventListener('dragenter', entrar)
     window.addEventListener('dragover', sobre)

@@ -75,12 +75,22 @@ test('o dock recolhe, volta e lembra como você deixou', async () => {
   const dock = janela.getByRole('navigation', { name: 'Navegação principal' })
   await expect(dock).toBeVisible()
 
-  // O botão de recolher aparece quando o mouse chega perto do dock.
+  // O botão de recolher aparece quando o mouse chega perto do dock. Pelo mouse, o foco não é levado
+  // para o botão que aparece (o espaço, no leitor, recolheria o dock sem querer).
   const caixa = (await dock.boundingBox())!
   await janela.mouse.move(caixa.x + caixa.width + 24, caixa.y + caixa.height / 2)
   await janela.getByRole('button', { name: 'Recolher a navegação' }).click()
   await expect(dock).toHaveCount(0)
-  await expect(janela.getByRole('button', { name: 'Mostrar a navegação' })).toBeFocused()
+  const mostrar = janela.getByRole('button', { name: 'Mostrar a navegação' })
+  await expect(mostrar).not.toBeFocused()
+  // Pelo teclado, o foco segue o botão que trocou de lugar.
+  await mostrar.focus()
+  await janela.keyboard.press('Enter')
+  await expect(dock).toBeVisible()
+  await expect(janela.getByRole('button', { name: 'Recolher a navegação' })).toBeFocused()
+  await janela.keyboard.press('Enter')
+  await expect(dock).toHaveCount(0)
+  await expect(mostrar).toBeFocused()
   await app.close()
 
   const segunda = await abrirApp(dados)

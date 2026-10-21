@@ -1,8 +1,9 @@
 // O dock: a navegação principal flutua na base da janela, nunca numa barra lateral. É simétrico:
 // Importar no meio, dois itens de cada lado (Ajustes é sempre o último; no leitor, abre o Aa).
-// O botão de recolher fica de fora, ao lado, e só aparece com o ponteiro perto (ou com o foco do
-// teclado). Recolhido, vira um botão pequeno; a escolha vale para todas as telas e fica guardada.
-// No leitor, o dock mora na faixa de baixo e some junto com ela enquanto você lê.
+// O botão de recolher fica de fora, ao lado (no leitor, em cima), e só aparece com o ponteiro perto
+// (ou com o foco do teclado). Recolhido, vira um botão pequeno (no leitor, com os Ajustes ao lado);
+// a escolha vale para todas as telas e fica guardada. No leitor, o dock mora na faixa de baixo e
+// some junto com ela enquanto você lê.
 
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Icone, type NomeDoIcone } from './Icone'
@@ -68,21 +69,33 @@ function usarPerto(elemento: RefObject<HTMLElement | null>, ativo: boolean) {
   useEffect(() => {
     if (!ativo) return
     let atual = false
+    const mudar = (agora: boolean) => {
+      if (agora === atual) return
+      atual = agora
+      setPerto(agora)
+    }
     const aoMover = (evento: PointerEvent) => {
       const caixa = elemento.current?.getBoundingClientRect()
       if (!caixa) return
       const dx = Math.max(caixa.left - evento.clientX, 0, evento.clientX - caixa.right)
       const dy = Math.max(caixa.top - evento.clientY, 0, evento.clientY - caixa.bottom)
-      const agora = Math.hypot(dx, dy) <= PERTO
-      if (agora === atual) return
-      atual = agora
-      setPerto(agora)
+      mudar(Math.hypot(dx, dy) <= PERTO)
     }
+    // Dentro do livro (os iframes do foliate) a janela não vê o ponteiro; fora da janela, também não.
+    const aoSair = (evento: PointerEvent) => {
+      const destino = evento.relatedTarget
+      if (!destino || (destino instanceof Element && destino.closest('iframe, foliate-view'))) mudar(false)
+    }
+    const longe = () => mudar(false)
     window.addEventListener('pointermove', aoMover, { passive: true })
     window.addEventListener('pointerdown', aoMover, { passive: true })
+    window.addEventListener('pointerout', aoSair, { passive: true })
+    window.addEventListener('blur', longe)
     return () => {
       window.removeEventListener('pointermove', aoMover)
       window.removeEventListener('pointerdown', aoMover)
+      window.removeEventListener('pointerout', aoSair)
+      window.removeEventListener('blur', longe)
       setPerto(false)
     }
   }, [elemento, ativo])
@@ -108,14 +121,16 @@ export function Dock({
   const nav = useRef<HTMLElement>(null)
   const perto = usarPerto(nav, !recolhido)
 
-  // Quem recolheu ou abriu pelo teclado continua com o foco no botão que trocou de lugar.
+  // Quem recolheu ou abriu pelo teclado continua com o foco no botão que trocou de lugar. Pelo mouse,
+  // não: o foco num botão escondido faria o espaço (que vira a página) recolher o dock.
   useEffect(() => {
     if (alternou.current) alternar.current?.focus()
     alternou.current = false
   }, [recolhido])
 
-  const mudar = (valor: boolean) => {
-    alternou.current = true
+  /** pelaTecla: o clique veio do teclado (Enter ou espaço não têm "detail"). */
+  const mudar = (valor: boolean, pelaTecla: boolean) => {
+    alternou.current = pelaTecla
     guardarRecolhido(valor)
     setRecolhido(valor)
   }
@@ -129,10 +144,16 @@ export function Dock({
           className="dock-mostrar"
           aria-label="Mostrar a navegação"
           aria-expanded={false}
-          onClick={() => mudar(false)}
+          onClick={evento => mudar(false, evento.detail === 0)}
         >
           <Icone nome="mostrar" />
         </button>
+        {/* Lendo, os ajustes continuam a um clique, com o dock recolhido. */}
+        {naFaixa && (
+          <button type="button" className="dock-mostrar" aria-label="Ajustes de leitura" onClick={aoAjustes}>
+            <Icone nome="ajustes" />
+          </button>
+        )}
       </div>
     )
   }
@@ -159,7 +180,7 @@ export function Dock({
         data-perto={perto || undefined}
         aria-label="Recolher a navegação"
         aria-expanded={true}
-        onClick={() => mudar(true)}
+        onClick={evento => mudar(true, evento.detail === 0)}
       >
         <Icone nome="recolher" />
       </button>

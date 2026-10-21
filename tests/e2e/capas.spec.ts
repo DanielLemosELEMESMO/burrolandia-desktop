@@ -133,3 +133,82 @@ test('trocar a capa por uma das capas do catálogo', async () => {
   await app.close()
   await catalogo.fechar()
 })
+
+test('capas difíceis: formulário e página girada são recortadas; capa com título e artigo ficam inteiras', async () => {
+  const dados = novaPastaDeDados()
+  mkdirSync(join(dados, 'origem'), { recursive: true })
+  const { app, janela } = await abrirApp(dados)
+  const casos: [string, string, number][] = [
+    ['capa-em-formulario.pdf', 'Capa em Formulario', 1.5],
+    ['capa-girada.pdf', 'Capa Girada', 1.5],
+    ['capa-com-titulo.pdf', 'Capa com Titulo', 595 / 420],
+    ['artigo.pdf', 'Artigo', 595 / 420],
+  ]
+  for (const [arquivo] of casos) {
+    const caminho = join(dados, 'origem', arquivo)
+    copyFileSync(join(__dirname, '../fixtures/pdf', arquivo), caminho)
+    await importar(app, janela, caminho)
+  }
+  await irPara(janela, 'Biblioteca')
+  for (const [, titulo, esperada] of casos) {
+    const capa = janela.getByRole('main').locator('li.cartao', { hasText: titulo }).locator('img.capa')
+    // 1,5 é só a imagem (300 × 450); 1,42 é a página inteira (420 × 595): a diferença passa de 0,05.
+    await expect.poll(() => proporcao(capa), { message: titulo }).toBeCloseTo(esperada, 1)
+  }
+  await app.close()
+})
+
+test('"Trocar a capa" começa do zero a cada abertura', async () => {
+  const dados = novaPastaDeDados()
+  mkdirSync(join(dados, 'origem'), { recursive: true })
+  const pdf = join(dados, 'origem', 'capa-com-margem.pdf')
+  copyFileSync(join(__dirname, '../fixtures/pdf/capa-com-margem.pdf'), pdf)
+  const { app, janela } = await abrirApp(dados)
+  await importar(app, janela, pdf)
+
+  let dialogo = await trocarCapa(janela, 'Capa com Margem')
+  await dialogo.getByRole('list', { name: 'Páginas do livro' }).getByRole('button', { name: 'Página 1' }).click()
+  await expect(dialogo.getByRole('group', { name: /Área do recorte/ })).toBeFocused()
+  await janela.keyboard.press('Escape')
+  await expect(dialogo).toBeHidden()
+  // Fechando, o foco volta para quem abriu (o botão "Mais ações" do livro).
+  await expect(janela.getByRole('button', { name: 'Mais ações para Capa com Margem' })).toBeFocused()
+
+  dialogo = await trocarCapa(janela, 'Capa com Margem')
+  await expect(dialogo.getByRole('radio', { name: 'Do livro' })).toBeChecked()
+  await expect(dialogo.getByRole('group', { name: /Área do recorte/ })).toHaveCount(0)
+  await dialogo.getByRole('list', { name: 'Páginas do livro' }).getByRole('button', { name: 'Página 2' }).click()
+  await dialogo.getByRole('button', { name: 'Usar como capa' }).click()
+  await expect(dialogo).toBeHidden()
+
+  dialogo = await trocarCapa(janela, 'Capa com Margem')
+  await expect(dialogo.getByRole('group', { name: /Área do recorte/ })).toHaveCount(0)
+  // Escolher de novo a mesma página e o mesmo recorte: já é a capa, o diálogo só fecha (sem erro).
+  await dialogo.getByRole('list', { name: 'Páginas do livro' }).getByRole('button', { name: 'Página 2' }).click()
+  await dialogo.getByRole('button', { name: 'Usar como capa' }).click()
+  await expect(dialogo).toBeHidden()
+  await app.close()
+})
+
+test('um arrasto que começa no recorte e termina no fundo não fecha o diálogo', async () => {
+  const dados = novaPastaDeDados()
+  mkdirSync(join(dados, 'origem'), { recursive: true })
+  const pdf = join(dados, 'origem', 'capa-com-margem.pdf')
+  copyFileSync(join(__dirname, '../fixtures/pdf/capa-com-margem.pdf'), pdf)
+  const { app, janela } = await abrirApp(dados)
+  await importar(app, janela, pdf)
+  const dialogo = await trocarCapa(janela, 'Capa com Margem')
+  await dialogo.getByRole('list', { name: 'Páginas do livro' }).getByRole('button', { name: 'Página 2' }).click()
+  await expect(dialogo.getByRole('group', { name: /Área do recorte/ })).toBeVisible()
+  const area = (await dialogo.locator('.recorte').boundingBox())!
+  const caixa = (await dialogo.boundingBox())!
+  await janela.mouse.move(area.x + area.width * 0.4, area.y + area.height * 0.3)
+  await janela.mouse.down()
+  await janela.mouse.move(caixa.x - 40, area.y + area.height * 0.3, { steps: 8 })
+  await janela.mouse.up()
+  await expect(dialogo.getByRole('group', { name: /Área do recorte/ })).toBeVisible()
+  // Apertar e soltar no fundo continua fechando.
+  await janela.mouse.click(caixa.x - 40, caixa.y + 20)
+  await expect(dialogo).toBeHidden()
+  await app.close()
+})

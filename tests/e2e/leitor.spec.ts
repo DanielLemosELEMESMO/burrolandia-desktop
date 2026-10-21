@@ -1,3 +1,4 @@
+import { copyFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { gravarLivrosDeTeste } from '../fixtures/livros'
@@ -67,9 +68,71 @@ test('no leitor, o dock é o mesmo e simétrico: Ajustes de leitura é o último
   await janela.mouse.move(caixa.x + caixa.width + 24, caixa.y + caixa.height / 2)
   await janela.getByRole('button', { name: 'Recolher a navegação' }).click()
   await expect(dock).toHaveCount(0)
-  await expect(janela.getByRole('button', { name: 'Mostrar a navegação' })).toBeFocused()
+  // Recolhido, os ajustes continuam a um clique, ao lado do botão de mostrar.
+  await mostrarFaixas(janela)
+  await janela.getByRole('button', { name: 'Ajustes de leitura' }).click()
+  await expect(janela.getByRole('dialog', { name: 'Ajustes de leitura' })).toBeVisible()
+  await janela.keyboard.press('Escape')
+  await mostrarFaixas(janela)
   await janela.getByRole('button', { name: 'Mostrar a navegação' }).click()
   await expect(dock).toBeVisible()
+  await app.close()
+})
+
+test('depois de mostrar o dock pelo mouse, o espaço vira a página (e não recolhe o dock)', async () => {
+  const dados = novaPastaDeDados()
+  const livros = gravarLivrosDeTeste(join(dados, 'origem'))
+  const { app, janela } = await abrirApp(dados)
+  await escolherArquivo(app, livros.domCasmurro)
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
+  await janela.getByRole('dialog', { name: 'Seu livro está na biblioteca' }).getByRole('button', { name: 'Começar a ler' }).click()
+  const leitor = janela.getByRole('main', { name: 'Lendo Dom Casmurro' })
+  await expect(leitor).toHaveAttribute('data-cfi', /^epubcfi/)
+  await posicaoParada(janela, leitor)
+  await mostrarFaixas(janela)
+  const dock = janela.getByRole('navigation', { name: 'Navegação principal' })
+  const caixa = (await dock.boundingBox())!
+  await janela.mouse.move(caixa.x + caixa.width + 24, caixa.y + caixa.height / 2)
+  await janela.getByRole('button', { name: 'Recolher a navegação' }).click()
+  await janela.getByRole('button', { name: 'Mostrar a navegação' }).click()
+  await expect(dock).toBeVisible()
+  // Lendo de novo: o mouse vai embora e o espaço vira a página.
+  await janela.mouse.move(400, 200, { steps: 5 })
+  const antes = await leitor.getAttribute('data-cfi')
+  await janela.keyboard.press(' ')
+  await expect.poll(() => leitor.getAttribute('data-cfi')).not.toBe(antes)
+  await expect(janela.getByRole('button', { name: 'Mostrar a navegação' })).toHaveCount(0)
+  await app.close()
+})
+
+test('na página original, o recolher do dock não cobre o zoom, da janela estreita à larga', async () => {
+  const dados = novaPastaDeDados()
+  mkdirSync(join(dados, 'origem'), { recursive: true })
+  const pdf = join(dados, 'origem', 'capa-com-margem.pdf')
+  copyFileSync(join(__dirname, '../fixtures/pdf/capa-com-margem.pdf'), pdf)
+  const { app, janela } = await abrirApp(dados)
+  await escolherArquivo(app, pdf)
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
+  await janela.getByRole('dialog', { name: 'Seu livro está na biblioteca' }).getByRole('button', { name: 'Começar a ler' }).click()
+  await expect(janela.getByRole('radio', { name: 'Página original' })).toBeEnabled({ timeout: 30_000 })
+  await janela.getByRole('radio', { name: 'Página original' }).check({ force: true })
+  const dock = janela.getByRole('navigation', { name: 'Navegação principal' })
+  for (const largura of [720, 800, 880, 1040]) {
+    await app.evaluate(({ BrowserWindow }, w) => BrowserWindow.getAllWindows()[0].setSize(w, 640), largura)
+    await expect.poll(() => janela.evaluate(() => (globalThis as unknown as { innerWidth: number }).innerWidth)).toBeLessThanOrEqual(largura)
+    const caixa = (await dock.boundingBox())!
+    // Com o mouse perto do dock (o recolher aparece), o centro do "−" continua sendo o "−".
+    await janela.mouse.move(caixa.x + caixa.width / 2, caixa.y + 5)
+    await expect(janela.getByRole('button', { name: 'Recolher a navegação' })).toHaveCSS('opacity', '1')
+    const menos = (await janela.getByRole('button', { name: 'Diminuir a página' }).boundingBox())!
+    expect(menos.width).toBeGreaterThanOrEqual(40)
+    const noCentro = await janela.evaluate(([x, y]) => {
+      type No = { closest(seletor: string): { getAttribute(nome: string): string | null } | null }
+      const { document } = globalThis as unknown as { document: { elementFromPoint(x: number, y: number): No | null } }
+      return document.elementFromPoint(x, y)?.closest('button')?.getAttribute('aria-label')
+    }, [menos.x + menos.width / 2, menos.y + menos.height / 2])
+    expect(noCentro, `largura ${largura}`).toBe('Diminuir a página')
+  }
   await app.close()
 })
 

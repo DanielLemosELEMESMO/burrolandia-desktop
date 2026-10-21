@@ -32,6 +32,9 @@ export function Dialogo({
   children,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
+  // Só fecha pelo fundo quem apertou e soltou no fundo: um arrasto que começa dentro (no recorte, por
+  // exemplo) e termina fora não fecha.
+  const apertouNoFundo = useRef(false)
   const idTitulo = useId()
 
   useEffect(() => {
@@ -51,8 +54,13 @@ export function Dialogo({
         evento.preventDefault()
         if (!travado) aoFechar()
       }}
+      onPointerDown={evento => {
+        apertouNoFundo.current = evento.target === ref.current
+      }}
       onClick={evento => {
-        if (evento.target === ref.current && !travado) aoFechar()
+        const noFundo = evento.target === ref.current && apertouNoFundo.current
+        apertouNoFundo.current = false
+        if (noFundo && !travado) aoFechar()
       }}
     >
       <div className="dialogo-conteudo">

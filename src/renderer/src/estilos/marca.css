@@ -231,7 +231,18 @@
 
 .dock-recolhido-na-faixa {
   position: static;
+  display: flex;
+  gap: 8px;
   transform: none;
+}
+
+/* No leitor, o recolher flutua em cima da ponta direita do dock: ao lado, cobriria o zoom da página. */
+.dock-zona-na-faixa .dock-recolher {
+  left: auto;
+  right: 0;
+  top: auto;
+  bottom: 100%;
+  transform: translateY(-8px);
 }
 
 .dock-na-faixa .dock-item .icone {

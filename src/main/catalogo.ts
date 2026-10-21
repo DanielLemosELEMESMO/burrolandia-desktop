@@ -246,8 +246,10 @@ export class Catalogo {
   }
 
   /** Troca a capa do livro pela do catálogo: a escolhida, ou a da sua edição, ou a da obra. */
+  /** Usa a capa do catálogo (a escolhida, ou a da edição, ou a da obra). null: não deu para baixar. */
   async usarCapaDoCatalogo(livroId: string, capaId?: number): Promise<SobreLivro | null> {
-    await this.#baixarCapa(livroId, capaId ?? this.#capaId(livroId))
+    const imagem = await this.#imagemDaCapa(capaId ?? this.#capaId(livroId))
+    if (!imagem || !(await this.biblioteca.salvarCapa(livroId, imagem))) return null
     this.aoMudar(livroId)
     return this.sobre(livroId)
   }

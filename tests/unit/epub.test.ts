@@ -1,7 +1,25 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { strToU8, unzipSync, zipSync, strFromU8 } from 'fflate'
 import { escreverEpub, type EpubParaEscrever } from '@nucleo/epub/escrever'
 import { imagensDoEpub, lerEpub, ErroEpub } from '@nucleo/epub/ler'
+
+// Um espião no fflate: registra o que foi de fato descompactado (o filtro disse "sim").
+const { descompactados } = vi.hoisted(() => ({ descompactados: [] as string[] }))
+vi.mock('fflate', async original => {
+  const real = await original<typeof import('fflate')>()
+  return {
+    ...real,
+    unzipSync: (dados: Uint8Array, opcoes?: Parameters<typeof real.unzipSync>[1]) =>
+      real.unzipSync(dados, {
+        ...opcoes,
+        filter: arquivo => {
+          const quer = opcoes?.filter ? opcoes.filter(arquivo) : true
+          if (quer) descompactados.push(arquivo.name)
+          return quer
+        },
+      }),
+  }
+})
 
 const capaSvg = strToU8('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"><rect width="600" height="900" fill="#2d5a4e"/></svg>')
 
@@ -119,6 +137,37 @@ describe('imagensDoEpub', () => {
       ['OPS/img/figura.png', 'image/png'],
     ])
     expect(imagens[0].bytes).toEqual(capa)
+  })
+
+  it('aceita media-type "image/jpg" (comum em arquivos reais)', () => {
+    const epub = epubManual(
+      '<dc:title>Fotos</dc:title>',
+      '<item id="f" href="foto.jpg" media-type="image/jpg"/>',
+      { 'OPS/foto.jpg': jpeg(6000) },
+    )
+    expect(imagensDoEpub(epub).map(i => [i.nome, i.tipo])).toEqual([['OPS/foto.jpg', 'image/jpeg']])
+  })
+
+  it('a capa declarada em SVG não passa a exceção de tamanho para a primeira outra imagem', () => {
+    const epub = epubManual(
+      '<dc:title>Vetor</dc:title><meta name="cover" content="capa"/>',
+      '<item id="capa" href="capa.svg" media-type="image/svg+xml"/>' +
+        '<item id="enfeite" href="enfeite.jpg" media-type="image/jpeg"/>' +
+        '<item id="foto" href="foto.jpg" media-type="image/jpeg"/>',
+      { 'OPS/capa.svg': capaSvg, 'OPS/enfeite.jpg': jpeg(300), 'OPS/foto.jpg': jpeg(9000) },
+    )
+    expect(imagensDoEpub(epub).map(i => i.nome)).toEqual(['OPS/foto.jpg'])
+  })
+
+  it('não descompacta o que não vai usar: imagens grandes demais e as que passam do máximo', () => {
+    const itens = Array.from({ length: 6 }, (_, i) => `<item id="f${i}" href="f${i}.jpg" media-type="image/jpeg"/>`).join('')
+    const arquivos: Record<string, Uint8Array> = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`OPS/f${i}.jpg`, jpeg(5000)]))
+    arquivos['OPS/f0.jpg'] = jpeg(6 * 1024 * 1024)
+    const epub = epubManual('<dc:title>Fotos</dc:title>', itens, arquivos)
+    descompactados.length = 0
+    const imagens = imagensDoEpub(epub, 2)
+    expect(imagens.map(i => i.nome)).toEqual(['OPS/f1.jpg', 'OPS/f2.jpg'])
+    expect(descompactados.filter(n => n.endsWith('.jpg')).sort()).toEqual(['OPS/f1.jpg', 'OPS/f2.jpg'])
   })
 
   it('para no máximo pedido', () => {

@@ -34,6 +34,12 @@
   pointer-events: none;
 }
 
+/* Com a faixa escondida, o recolher do dock some junto, mesmo com o ponteiro perto. */
+.leitor[data-barras='ocultas'] .leitor-barra:not(:focus-within, :focus-visible) .dock-recolher {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .leitor-topo {
   position: absolute;
   top: 0;
@@ -309,10 +315,17 @@
   text-align: center;
 }
 
+/* O zoom não encolhe: quem encolhe (e corta com reticências) é o texto ao lado. */
 .rodape-zoom {
   display: inline-flex;
+  flex-shrink: 0;
   justify-content: center;
   gap: 4px;
+  overflow: visible;
+}
+
+.rodape-zoom .botao-icone {
+  flex-shrink: 0;
 }
 
 .rodape-zoom .botao-icone {

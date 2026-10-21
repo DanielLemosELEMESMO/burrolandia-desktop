@@ -824,11 +824,11 @@
   transform: translate(-50%, -50%);
 }
 
-/* A área de pegar é maior que o desenho da alça. */
+/* A área de pegar (44 px) é maior que o desenho da alça. */
 .recorte-alca::before {
   content: '';
   position: absolute;
-  inset: -12px;
+  inset: -15px;
 }
 
 .recorte-alca-no {

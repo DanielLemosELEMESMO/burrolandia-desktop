@@ -199,29 +199,61 @@ export function lerEpub(bytes: Uint8Array): MetadadosEpub {
 }
 
 // Imagens que viram capa: as que o app grava (JPEG, PNG, WebP), sem os enfeites (menos de 4 KB).
-const TIPOS_DE_CAPA = new Set(['image/jpeg', 'image/png', 'image/webp'])
+// "image/jpg" não existe, mas aparece bastante nos arquivos de verdade.
+const TIPOS_DE_CAPA: Record<string, string> = {
+  'image/jpeg': 'image/jpeg',
+  'image/jpg': 'image/jpeg',
+  'image/pjpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+}
 const TAMANHO_MINIMO = 4 * 1024
 const TAMANHO_MAXIMO = 5 * 1024 * 1024
+/** O que vai para a tela de uma vez, somando as imagens. */
+const TOTAL_MAXIMO = 40 * 1024 * 1024
 
-/** As imagens do EPUB que podem virar capa, a capa declarada primeiro, até `maximo`. */
+/** O tamanho (descompactado) de cada arquivo, lido do índice do ZIP, sem descompactar nada. */
+function tamanhosNoZip(bytes: Uint8Array): Map<string, number> {
+  const tamanhos = new Map<string, number>()
+  try {
+    unzipSync(bytes, {
+      filter: arquivo => {
+        tamanhos.set(arquivo.name, arquivo.originalSize)
+        return false
+      },
+    })
+  } catch {
+    throw new ErroEpub('arquivo-invalido', 'O arquivo não é um EPUB válido.')
+  }
+  return tamanhos
+}
+
+/**
+ * As imagens do EPUB que podem virar capa, a capa declarada primeiro, até `maximo`. Os tamanhos vêm
+ * do índice do ZIP: só são descompactadas as imagens que entram na lista.
+ */
 export function imagensDoEpub(bytes: Uint8Array, maximo = 24): ImagemDoLivro[] {
   const { opf, pastaOpf } = lerOpf(bytes, extrair(bytes, nome => nome === 'META-INF/container.xml'))
   const capa = itemDaCapa(opf)
   const itens = porNome(opf, 'item').filter(el => el !== capa)
-  const candidatos = (capa ? [capa, ...itens] : itens).flatMap(el => {
-    const tipo = (atributo(el, 'media-type') ?? '').toLowerCase()
+  const tamanhos = tamanhosNoZip(bytes)
+  const escolhidas: { nome: string; tipo: string }[] = []
+  let total = 0
+  for (const el of capa ? [capa, ...itens] : itens) {
+    const tipo = TIPOS_DE_CAPA[(atributo(el, 'media-type') ?? '').toLowerCase()]
     const href = atributo(el, 'href')
-    return TIPOS_DE_CAPA.has(tipo) && href ? [{ nome: resolverCaminho(pastaOpf, href), tipo }] : []
-  })
-  const nomes = new Set(candidatos.map(c => c.nome))
+    if (!tipo || !href) continue
+    const nome = resolverCaminho(pastaOpf, href)
+    const tamanho = tamanhos.get(nome) ?? 0
+    // A capa declarada vale em qualquer tamanho; as outras imagens, só as que não são enfeite.
+    const minimo = el === capa ? 1 : TAMANHO_MINIMO
+    if (tamanho < minimo || tamanho > TAMANHO_MAXIMO || total + tamanho > TOTAL_MAXIMO) continue
+    if (escolhidas.some(e => e.nome === nome)) continue
+    escolhidas.push({ nome, tipo })
+    total += tamanho
+    if (escolhidas.length === maximo) break
+  }
+  const nomes = new Set(escolhidas.map(e => e.nome))
   const arquivos = extrair(bytes, nome => nomes.has(nome))
-  // A capa declarada vale em qualquer tamanho; as outras imagens, só as que não são enfeite.
-  const nomeDaCapa = capa ? candidatos[0]?.nome : undefined
-  return candidatos
-    .flatMap(({ nome, tipo }) => {
-      const conteudo = arquivos[nome]
-      const minimo = nome === nomeDaCapa ? 1 : TAMANHO_MINIMO
-      return conteudo && conteudo.length >= minimo && conteudo.length <= TAMANHO_MAXIMO ? [{ nome, tipo, bytes: conteudo }] : []
-    })
-    .slice(0, maximo)
+  return escolhidas.flatMap(({ nome, tipo }) => (arquivos[nome]?.length ? [{ nome, tipo, bytes: arquivos[nome] }] : []))
 }

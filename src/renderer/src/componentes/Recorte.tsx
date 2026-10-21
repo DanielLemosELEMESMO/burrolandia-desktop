@@ -2,7 +2,7 @@
 // cantos muda o tamanho; arrastar fora desenha um novo. Pelo teclado, setas movem e Shift + setas
 // mudam o tamanho. A conta (frações da imagem) mora em @nucleo/recorte.
 
-import { useId, useRef, type Dispatch, type PointerEvent as EventoDePonteiro, type SetStateAction } from 'react'
+import { useEffect, useId, useRef, useState, type Dispatch, type PointerEvent as EventoDePonteiro, type SetStateAction } from 'react'
 import { emPixels, limitar, mover, pelaTecla, puxar, type Alca, type Retangulo } from '@nucleo/recorte'
 
 export interface ImagemParaRecortar {
@@ -29,10 +29,11 @@ export function Recorte({
   const arrasto = useRef<Arrasto | null>(null)
   const idDaDica = useId()
 
-  /** Onde o ponteiro está, em frações da imagem. */
+  /** Onde o ponteiro está, em frações da imagem; fora dela (o arrasto continua), na borda. */
   const ponto = (evento: EventoDePonteiro) => {
     const caixa = area.current!.getBoundingClientRect()
-    return { x: (evento.clientX - caixa.left) / caixa.width, y: (evento.clientY - caixa.top) / caixa.height }
+    const dentro = (valor: number) => Math.min(1, Math.max(0, valor))
+    return { x: dentro((evento.clientX - caixa.left) / caixa.width), y: dentro((evento.clientY - caixa.top) / caixa.height) }
   }
 
   const comecar = (modo: Arrasto['modo']) => (evento: EventoDePonteiro) => {
@@ -59,6 +60,13 @@ export function Recorte({
   }
 
   const emPx = emPixels(selecao, imagem.largura, imagem.altura)
+  const tamanho = `${emPx.largura} por ${emPx.altura} pixels`
+  // O leitor de tela ouve o tamanho novo quando ele para de mudar (não a cada toque de seta).
+  const [anunciado, setAnunciado] = useState('')
+  useEffect(() => {
+    const espera = window.setTimeout(() => setAnunciado(`Recorte de ${tamanho}`), 400)
+    return () => window.clearTimeout(espera)
+  }, [tamanho])
   const posicao = {
     left: `${selecao.x * 100}%`,
     top: `${selecao.y * 100}%`,
@@ -84,7 +92,8 @@ export function Recorte({
           className="recorte-selecao"
           role="group"
           tabIndex={0}
-          aria-label={`Área do recorte: ${emPx.largura} por ${emPx.altura} pixels`}
+          aria-label={`Área do recorte: ${tamanho}`}
+          aria-roledescription="recorte"
           aria-describedby={idDaDica}
           style={posicao}
           onPointerDown={comecar('mover')}
@@ -105,17 +114,25 @@ export function Recorte({
         Arraste para mover; puxe as bordas e os cantos para mudar o tamanho. No teclado, as setas movem e Shift com as
         setas muda o tamanho. Recorte de {emPx.largura} × {emPx.altura} pixels.
       </p>
+      <p className="so-leitor-de-tela" aria-live="polite">
+        {anunciado}
+      </p>
     </div>
   )
 }
 
-/** O recorte em JPEG, com no máximo `alturaMaxima` pixels de altura. */
-export async function recortarEmJpeg(imagem: ImagemParaRecortar, selecao: Retangulo, alturaMaxima = 1600): Promise<Uint8Array> {
+/** O recorte em JPEG, com no máximo `alturaMaxima` pixels de altura e `larguraMaxima` de largura. */
+export async function recortarEmJpeg(
+  imagem: ImagemParaRecortar,
+  selecao: Retangulo,
+  alturaMaxima = 1600,
+  larguraMaxima = 1600,
+): Promise<Uint8Array> {
   const elemento = new Image()
   elemento.src = imagem.url
   await elemento.decode()
   const px = emPixels(selecao, elemento.naturalWidth, elemento.naturalHeight)
-  const escala = Math.min(1, alturaMaxima / px.altura)
+  const escala = Math.min(1, alturaMaxima / px.altura, larguraMaxima / px.largura)
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(px.largura * escala))
   canvas.height = Math.max(1, Math.round(px.altura * escala))
