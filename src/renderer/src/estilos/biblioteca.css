@@ -596,7 +596,8 @@
   width: 156px;
   height: 156px;
   margin-bottom: 6px;
-  filter: drop-shadow(0 10px 14px rgb(0 0 0 / 18%));
+  object-fit: contain;
+  filter: drop-shadow(0 10px 14px rgb(0 0 0 / 22%));
 }
 
 .vazio h1 {

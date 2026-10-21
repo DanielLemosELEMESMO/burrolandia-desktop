@@ -1,37 +1,21 @@
 /* A marca: assinatura, burro e o dock flutuante. */
 
+/* A assinatura dourada do kit (SVG), com a coroa no lugar do acento do â. */
 .assinatura {
-  display: inline-block;
-  font: 650 27px/1 var(--display);
-  letter-spacing: -0.015em;
-  white-space: nowrap;
+  display: inline-flex;
 }
 
-/* A coroa ocupa o lugar do acento do â. */
-.assinatura-a {
-  position: relative;
-  display: inline-block;
+.assinatura img {
+  display: block;
+  height: 36px;
+  width: auto;
 }
 
-.assinatura-coroa {
-  position: absolute;
-  left: 52%;
-  bottom: 0.6em;
-  width: 0.6em;
-  height: auto;
-  color: var(--ouro);
-  transform: translateX(-50%) rotate(-9deg);
-}
-
-.coroa {
-  width: 24px;
-  height: 18px;
-  color: var(--ouro);
-}
-
+/* O burro não é quadrado: cabe inteiro no quadrado que o recebe. */
 .burro {
   width: 64px;
   height: 64px;
+  object-fit: contain;
 }
 
 /* Dock: ameixa, flutuando no centro da base. As cores são fixas: ele é da marca em qualquer tema.
