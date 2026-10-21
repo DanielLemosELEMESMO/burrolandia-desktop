@@ -102,6 +102,13 @@ test('capturas das telas', async () => {
   await foto('12-pdf-pagina-original')
   await janela.getByRole('button', { name: 'Voltar à biblioteca' }).click()
 
+  // Com o mouse perto do dock, o botão de recolher aparece ao lado.
+  const dock = janela.getByRole('navigation', { name: 'Navegação principal' })
+  await expect(dock).toBeVisible()
+  const caixa = (await dock.boundingBox())!
+  await janela.mouse.move(caixa.x + caixa.width + 24, caixa.y + caixa.height / 2)
+  await janela.waitForTimeout(300)
+  await foto('13a-dock-com-recolher')
   await janela.getByRole('button', { name: 'Recolher a navegação' }).click()
   await janela.waitForTimeout(300)
   await foto('13-dock-recolhido')

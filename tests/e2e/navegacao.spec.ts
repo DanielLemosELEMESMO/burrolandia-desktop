@@ -1,6 +1,6 @@
 import { copyFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 import { gravarLivrosDeTeste } from '../fixtures/livros'
 import { abrirApp, escolherArquivo, irPara, novaPastaDeDados } from './app'
 
@@ -40,12 +40,44 @@ test('a biblioteca busca, filtra pelo formato e alterna entre grade e lista', as
   await app.close()
 })
 
+/** O centro horizontal de um elemento na tela. */
+async function centro(elemento: Locator) {
+  const caixa = (await elemento.boundingBox())!
+  return caixa.x + caixa.width / 2
+}
+
+test('o dock é simétrico: Importar no meio, dois de cada lado, e o recolher fica de fora', async () => {
+  const { app, janela } = await abrirApp(novaPastaDeDados())
+  const dock = janela.getByRole('navigation', { name: 'Navegação principal' })
+  await expect(dock.getByRole('button')).toHaveText([/Início/, /Biblioteca/, /Importar/, /Buscar/, /Ajustes/])
+  expect(Math.abs((await centro(dock.getByRole('button', { name: 'Importar livro' }))) - (await centro(dock)))).toBeLessThan(1)
+
+  // O recolher não é um item do dock: flutua ao lado e só aparece com o mouse perto (ou com o foco).
+  const recolher = janela.getByRole('button', { name: 'Recolher a navegação' })
+  await expect(dock.getByRole('button', { name: 'Recolher a navegação' })).toHaveCount(0)
+  await janela.mouse.move(20, 20)
+  await expect(recolher).toHaveCSS('opacity', '0')
+  const caixa = (await dock.boundingBox())!
+  await janela.mouse.move(caixa.x + caixa.width + 24, caixa.y + caixa.height / 2)
+  await expect(recolher).toHaveCSS('opacity', '1')
+  await janela.mouse.move(20, 20)
+  await expect(recolher).toHaveCSS('opacity', '0')
+  await dock.getByRole('button', { name: 'Ajustes de leitura' }).focus()
+  await janela.keyboard.press('Tab')
+  await expect(recolher).toBeFocused()
+  await expect(recolher).toHaveCSS('opacity', '1')
+  await app.close()
+})
+
 test('o dock recolhe, volta e lembra como você deixou', async () => {
   const dados = novaPastaDeDados()
   const { app, janela } = await abrirApp(dados)
   const dock = janela.getByRole('navigation', { name: 'Navegação principal' })
   await expect(dock).toBeVisible()
 
+  // O botão de recolher aparece quando o mouse chega perto do dock.
+  const caixa = (await dock.boundingBox())!
+  await janela.mouse.move(caixa.x + caixa.width + 24, caixa.y + caixa.height / 2)
   await janela.getByRole('button', { name: 'Recolher a navegação' }).click()
   await expect(dock).toHaveCount(0)
   await expect(janela.getByRole('button', { name: 'Mostrar a navegação' })).toBeFocused()

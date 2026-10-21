@@ -535,9 +535,6 @@ export function TelaLeitor({
             <Icone nome="sumario" />
           </button>
         )}
-        <button type="button" className="botao-icone botao-aa" aria-label="Ajustes de leitura" onClick={() => setPainel('ajustes')}>
-          Aa
-        </button>
       </header>
 
       <div className="leitor-livro" ref={host} data-oculto={noOriginal || undefined} onWheel={e => aoRolar(e.nativeEvent)} />
@@ -604,7 +601,7 @@ export function TelaLeitor({
             </>
           )}
         </div>
-        <Dock atual={null} navegacao={navegacaoDoLeitor} naFaixa />
+        <Dock atual={null} navegacao={navegacaoDoLeitor} aoAjustes={() => setPainel('ajustes')} naFaixa />
         <div className="rodape-lado rodape-direita">
           {noOriginal && (
             <span className="rodape-zoom">

@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { gravarLivrosDeTeste } from '../fixtures/livros'
 import type { ApiBurrolandia } from '../../src/preload/api'
 import { abrirApp, escolherArquivo, novaPastaDeDados, posicaoParada } from './app'
@@ -34,6 +34,42 @@ test('com o diálogo de importação aberto por cima do livro, as setas não vir
   await fim.getByRole('button', { name: 'Começar a ler' }).click()
   await expect(janela.getByRole('main', { name: 'Lendo Memórias Póstumas de Brás Cubas' })).toHaveAttribute('data-cfi', /^epubcfi/)
   await expect(janela.getByRole('button', { name: 'Voltar ao início' })).toBeAttached()
+  await app.close()
+})
+
+/** O centro horizontal de um elemento na tela. */
+async function centro(elemento: Locator) {
+  const caixa = (await elemento.boundingBox())!
+  return caixa.x + caixa.width / 2
+}
+
+test('no leitor, o dock é o mesmo e simétrico: Ajustes de leitura é o último item, e recolhe também', async () => {
+  const dados = novaPastaDeDados()
+  const livros = gravarLivrosDeTeste(join(dados, 'origem'))
+  const { app, janela } = await abrirApp(dados)
+  await escolherArquivo(app, livros.domCasmurro)
+  await janela.getByRole('button', { name: 'Importar livro' }).first().click()
+  await janela.getByRole('dialog', { name: 'Seu livro está na biblioteca' }).getByRole('button', { name: 'Começar a ler' }).click()
+  await expect(janela.getByRole('main', { name: 'Lendo Dom Casmurro' })).toHaveAttribute('data-cfi', /^epubcfi/)
+  await mostrarFaixas(janela)
+
+  const dock = janela.getByRole('navigation', { name: 'Navegação principal' })
+  await expect(dock.getByRole('button')).toHaveText([/Início/, /Biblioteca/, /Importar/, /Buscar/, /Ajustes/])
+  expect(Math.abs((await centro(dock.getByRole('button', { name: 'Importar livro' }))) - (await centro(dock)))).toBeLessThan(1)
+  // O Aa saiu do topo: há um só botão de ajustes, o do dock.
+  await expect(janela.getByRole('button', { name: 'Ajustes de leitura' })).toHaveCount(1)
+  await dock.getByRole('button', { name: 'Ajustes de leitura' }).click()
+  await expect(janela.getByRole('dialog', { name: 'Ajustes de leitura' })).toBeVisible()
+  await janela.keyboard.press('Escape')
+
+  await mostrarFaixas(janela)
+  const caixa = (await dock.boundingBox())!
+  await janela.mouse.move(caixa.x + caixa.width + 24, caixa.y + caixa.height / 2)
+  await janela.getByRole('button', { name: 'Recolher a navegação' }).click()
+  await expect(dock).toHaveCount(0)
+  await expect(janela.getByRole('button', { name: 'Mostrar a navegação' })).toBeFocused()
+  await janela.getByRole('button', { name: 'Mostrar a navegação' }).click()
+  await expect(dock).toBeVisible()
   await app.close()
 })
 

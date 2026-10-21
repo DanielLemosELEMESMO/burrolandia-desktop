@@ -34,19 +34,24 @@
   height: 64px;
 }
 
-/* Dock: ameixa, flutuando no centro da base. As cores são fixas: ele é da marca em qualquer tema. */
+/* Dock: ameixa, flutuando no centro da base. As cores são fixas: ele é da marca em qualquer tema.
+   A zona leva o dock e, ao lado, o botão de recolher; o dock fica no centro exato da janela. */
 
-.dock {
+.dock-zona {
   --foco: var(--ouro);
   position: fixed;
   left: 50%;
   bottom: 18px;
   z-index: 30;
   transform: translateX(-50%);
+  animation: dock-entrar 0.22s ease;
+}
+
+.dock {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 2px;
-  padding: 6px 8px 6px 10px;
+  padding: 6px 10px;
   border-radius: 999px;
   background: var(--ameixa);
   color: var(--creme);
@@ -54,7 +59,6 @@
     0 14px 36px rgb(47 14 47 / 40%),
     0 2px 6px rgb(0 0 0 / 22%),
     inset 0 0 0 1px rgb(246 235 221 / 12%);
-  animation: dock-entrar 0.22s ease;
 }
 
 /* O anel de foco cabe dentro da pílula, sem vazar ouro sobre o creme do leitor. */
@@ -68,9 +72,10 @@
   justify-items: center;
   align-content: center;
   gap: 4px;
-  min-width: 76px;
+  /* Todos da mesma largura: dois de cada lado do Importar, e ele no meio exato. */
+  width: 84px;
   min-height: 54px;
-  padding: 6px 12px;
+  padding: 6px 4px 8px;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -109,7 +114,8 @@
   justify-items: center;
   gap: 5px;
   margin: -30px 6px 0;
-  padding: 0 6px;
+  /* O mesmo respiro embaixo dos itens: os rótulos ficam na mesma linha. */
+  padding: 0 6px 8px;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -142,21 +148,36 @@
   transform: translateY(-1px);
 }
 
+/* Recolher: fora do dock, flutuando ao lado, meio transparente; só aparece com o ponteiro perto
+   (data-perto) ou com o foco do teclado. */
 .dock-recolher {
+  position: absolute;
+  left: 100%;
+  top: 50%;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  margin-left: 4px;
+  width: var(--alvo);
+  height: var(--alvo);
   border: 0;
   border-radius: 50%;
-  background: transparent;
-  color: var(--creme-suave);
+  background: rgb(47 14 47 / 55%);
+  color: var(--creme);
+  box-shadow: inset 0 0 0 1px rgb(246 235 221 / 18%);
+  backdrop-filter: blur(8px);
+  transform: translate(12px, -50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, background var(--transicao);
+}
+
+.dock-recolher[data-perto],
+.dock-recolher:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .dock-recolher:hover {
-  background: rgb(185 167 217 / 16%);
-  color: var(--creme);
+  background: rgb(47 14 47 / 80%);
 }
 
 .dock-recolhido {
@@ -188,19 +209,29 @@
 }
 
 /* No leitor, o dock mora na faixa de baixo: menor, sem flutuar e sem subir o Importar. */
-.dock-na-faixa {
-  position: static;
+.dock-zona-na-faixa {
+  position: relative;
+  left: auto;
+  bottom: auto;
   transform: none;
-  padding: 4px 6px;
   animation: none;
+}
+
+.dock-na-faixa {
+  padding: 4px 8px;
   box-shadow: inset 0 0 0 1px rgb(246 235 221 / 12%);
 }
 
 .dock-na-faixa .dock-item {
-  min-width: 64px;
+  width: 74px;
   min-height: 46px;
-  padding: 4px 8px;
+  padding: 4px 4px 6px;
   font-size: 12px;
+}
+
+.dock-recolhido-na-faixa {
+  position: static;
+  transform: none;
 }
 
 .dock-na-faixa .dock-item .icone {
@@ -210,6 +241,7 @@
 
 .dock-na-faixa .dock-importar {
   margin: 0 2px;
+  padding-bottom: 6px;
   gap: 3px;
   font-size: 12px;
 }
