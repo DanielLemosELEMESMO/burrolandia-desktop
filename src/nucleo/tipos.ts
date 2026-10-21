@@ -57,6 +57,66 @@ export interface Livro {
   adicionadoEm: string
   abertoEm: string | null
   atualizadoEm: string
+  /** A obra e a edição no catálogo (Open Library), quando reconhecidas. */
+  obraId: string | null
+  edicaoId: string | null
+  reconhecimento: Reconhecimento
+}
+
+/**
+ * Como a obra do livro foi reconhecida:
+ * - pendente: ainda não procurou (ou estava sem internet);
+ * - isbn: achou a edição exata pelo ISBN;
+ * - titulo: achou a obra pelo título e pelo autor (a edição fica para você escolher);
+ * - escolhido: você escolheu a obra;
+ * - sem-resultado: procurou e não achou;
+ * - recusado: você disse que não é nenhuma das sugestões.
+ */
+export type Reconhecimento = 'pendente' | 'isbn' | 'titulo' | 'escolhido' | 'sem-resultado' | 'recusado'
+
+/** A obra: o livro como criação, acima das edições ("A Origem das Espécies"). Dados do Open Library. */
+export interface Obra {
+  /** O id do Open Library, como OL1003040W. */
+  id: string
+  titulo: string
+  autores: string[]
+  primeiroAno: number | null
+  /** Quantas edições o Open Library conhece. */
+  edicoes: number
+  capaId: number | null
+  assuntos: string[]
+  /** null enquanto não buscou; texto vazio se a obra não tem descrição. */
+  descricao: string | null
+}
+
+/** Uma publicação específica de uma obra: editora, ano, ISBN. */
+export interface Edicao {
+  /** O id do Open Library, como OL56164313M. */
+  id: string
+  obraId: string
+  titulo: string
+  editoras: string[]
+  /** A data como o Open Library escreve ("3 dezembro 2019", "16/07/2016"). */
+  publicadaEm: string | null
+  ano: number | null
+  paginas: number | null
+  /** Códigos de idioma do Open Library: por, eng, spa… */
+  idiomas: string[]
+  isbn: string[]
+  capaId: number | null
+}
+
+/** O que o painel "Sobre este livro" mostra. */
+export interface SobreLivro {
+  livro: Livro
+  obra: Obra | null
+  edicao: Edicao | null
+}
+
+/** Uma obra achada na busca, com a edição que a fez aparecer (num livro traduzido, a tradução). */
+export interface ObraEncontrada {
+  obra: Obra
+  edicao: Edicao | null
 }
 
 export type Tema = 'automatico' | 'papel' | 'sepia' | 'noite'

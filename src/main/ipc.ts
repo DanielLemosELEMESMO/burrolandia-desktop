@@ -5,9 +5,14 @@ import { PREFERENCIAS_PADRAO, type Preferencias, type Sessao } from '@nucleo/tip
 import { validarLocator, validarPreferencias } from '@nucleo/validacao'
 import type { Banco } from './banco'
 import type { Biblioteca } from './biblioteca'
+import type { Catalogo } from './catalogo'
 
 const ID = /^[0-9a-f-]{36}$/i
 const idValido = (id: unknown): id is string => typeof id === 'string' && ID.test(id)
+const obraValida = (id: unknown): id is string => typeof id === 'string' && /^OL\d{1,12}W$/.test(id)
+const edicaoValida = (id: unknown): id is string => typeof id === 'string' && /^OL\d{1,12}M$/.test(id)
+const buscaValida = (texto: unknown): texto is string =>
+  typeof texto === 'string' && texto.trim().length > 0 && texto.length <= 200
 
 export function lerPreferencias(banco: Banco): Preferencias {
   return { ...PREFERENCIAS_PADRAO, ...validarPreferencias(banco.lerPreferencia('leitura')) }
@@ -20,7 +25,12 @@ export function lerSessao(banco: Banco, biblioteca: Biblioteca): Sessao {
 }
 
 /** aoMudarAparencia: o tema ou a tela (biblioteca ou leitor) mudou, e o fundo da janela acompanha. */
-export function registrarIpc(banco: Banco, biblioteca: Biblioteca, aoMudarAparencia: () => void) {
+export function registrarIpc(
+  banco: Banco,
+  biblioteca: Biblioteca,
+  catalogo: Catalogo,
+  aoMudarAparencia: () => void,
+) {
   const importar = (caminho: string, destino: WebContents) =>
     biblioteca.importar(caminho, andamento => {
       if (!destino.isDestroyed()) destino.send('importacao:andamento', andamento)
@@ -91,4 +101,21 @@ export function registrarIpc(banco: Banco, biblioteca: Biblioteca, aoMudarAparen
   })
 
   ipcMain.handle('sessao:ler', () => lerSessao(banco, biblioteca))
+
+  // Catálogo (etapa 3): só ids, ids do Open Library e textos curtos passam.
+  ipcMain.handle('catalogo:sobre', (_, id: unknown) => (idValido(id) ? catalogo.sobreCompleto(id) : null))
+  ipcMain.handle('catalogo:reconhecer', (_, id: unknown, deNovo: unknown) =>
+    idValido(id) ? catalogo.reconhecer(id, { deNovo: deNovo === true }) : null,
+  )
+  ipcMain.handle('catalogo:buscar', (_, texto: unknown) => (buscaValida(texto) ? catalogo.buscarObras(texto.trim()) : []))
+  ipcMain.handle('catalogo:edicoes', (_, id: unknown) => (idValido(id) ? catalogo.edicoes(id) : []))
+  ipcMain.handle('catalogo:escolher-obra', (_, id: unknown, obraId: unknown) =>
+    idValido(id) && obraValida(obraId) ? catalogo.escolherObra(id, obraId) : null,
+  )
+  ipcMain.handle('catalogo:escolher-edicao', (_, id: unknown, edicaoId: unknown) =>
+    idValido(id) && edicaoValida(edicaoId) ? catalogo.escolherEdicao(id, edicaoId) : null,
+  )
+  ipcMain.handle('catalogo:nenhuma', (_, id: unknown) => (idValido(id) ? catalogo.nenhuma(id) : null))
+  ipcMain.handle('catalogo:capa', (_, id: unknown) => (idValido(id) ? catalogo.capaDoCatalogo(id) : null))
+  ipcMain.handle('catalogo:usar-capa', (_, id: unknown) => (idValido(id) ? catalogo.usarCapaDoCatalogo(id) : null))
 }

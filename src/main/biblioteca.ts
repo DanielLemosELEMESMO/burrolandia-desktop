@@ -210,7 +210,7 @@ export class Biblioteca {
       titulo: resultado.titulo,
       autores: resultado.autores,
       idioma: resultado.idioma,
-      identificadores: { isbn: [], outros: [] },
+      identificadores: { isbn: resultado.isbn, outros: [] },
       arquivoOriginal: 'original.pdf',
       arquivoLeitura: resultado.epub ? 'leitura.epub' : null,
       capa: null,

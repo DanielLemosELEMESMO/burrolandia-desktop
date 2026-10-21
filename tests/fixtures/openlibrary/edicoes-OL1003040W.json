@@ -1,0 +1,273 @@
+{
+ "links": {
+  "self": "/works/OL1003040W/editions.json?limit=100",
+  "work": "/works/OL1003040W"
+ },
+ "size": 90,
+ "entries": [
+  {
+   "key": "/books/OL62363757M",
+   "title": "Dom Casmurro",
+   "publishers": [
+    "Projecto Adamastor"
+   ],
+   "publish_date": "2013",
+   "languages": [
+    {
+     "key": "/languages/por"
+    }
+   ],
+   "isbn_13": [
+    "9789898698124"
+   ],
+   "covers": [
+    15241023
+   ],
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  },
+  {
+   "key": "/books/OL61241820M",
+   "title": "Dom Casmurro",
+   "publishers": [
+    "Penguin-Companhia"
+   ],
+   "publish_date": "16/07/2016",
+   "number_of_pages": 400,
+   "languages": [
+    {
+     "key": "/languages/por"
+    }
+   ],
+   "isbn_13": [
+    "9788582850350"
+   ],
+   "isbn_10": [
+    "8582850352"
+   ],
+   "covers": [
+    15167286
+   ],
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  },
+  {
+   "key": "/books/OL61030557M",
+   "title": "Dom Casmurro",
+   "publishers": [
+    "Principis"
+   ],
+   "publish_date": "02/05/2019",
+   "number_of_pages": 208,
+   "languages": [
+    {
+     "key": "/languages/por"
+    }
+   ],
+   "isbn_13": [
+    "9788594318602"
+   ],
+   "covers": [
+    15156099
+   ],
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  },
+  {
+   "key": "/books/OL52573289M",
+   "title": "Dom Casmurro",
+   "subtitle": "a novel",
+   "publishers": [
+    "Noonday Press"
+   ],
+   "publish_date": "1960",
+   "number_of_pages": 283,
+   "languages": [
+    {
+     "key": "/languages/eng"
+    }
+   ],
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  },
+  {
+   "key": "/books/OL52569056M",
+   "title": "Dom Casmurro",
+   "publishers": [
+    "Edições Melhoramentos"
+   ],
+   "publish_date": "1966",
+   "number_of_pages": 321,
+   "languages": [
+    {
+     "key": "/languages/por"
+    }
+   ],
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  },
+  {
+   "key": "/books/OL51694392M",
+   "title": "Dom Casmurro",
+   "publishers": [
+    "Penguin-Companhia"
+   ],
+   "publish_date": "2016",
+   "number_of_pages": 400,
+   "languages": [
+    {
+     "key": "/languages/por"
+    }
+   ],
+   "isbn_13": [
+    "9788543806631"
+   ],
+   "isbn_10": [
+    "8543806631"
+   ],
+   "covers": [
+    14625893
+   ],
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  },
+  {
+   "key": "/books/OL50642391M",
+   "title": "Dom Casmurro",
+   "subtitle": "A Novel",
+   "publishers": [
+    "Liveright Publishing Corporation"
+   ],
+   "publish_date": "2024",
+   "languages": [
+    {
+     "key": "/languages/eng"
+    }
+   ],
+   "isbn_13": [
+    "9781324095149"
+   ],
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  },
+  {
+   "key": "/books/OL12634777M",
+   "title": "Dom Casmurro et les yeux de ressac",
+   "publishers": [
+    "Métailié"
+   ],
+   "publish_date": "January 23, 2002",
+   "number_of_pages": 334,
+   "languages": [
+    {
+     "key": "/languages/fre"
+    }
+   ],
+   "isbn_13": [
+    "9782864244127"
+   ],
+   "isbn_10": [
+    "2864244128"
+   ],
+   "covers": [
+    3150035
+   ],
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  },
+  {
+   "key": "/books/OL43435035M",
+   "title": "Dom Casmurro - Colecao Literatura Brasileira",
+   "publishers": [
+    "CIRANDA CULTURAL"
+   ],
+   "publish_date": "Dec 05, 2009",
+   "isbn_13": [
+    "9788538003656"
+   ],
+   "isbn_10": [
+    "8538003658"
+   ],
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  },
+  {
+   "key": "/books/OL26906847M",
+   "title": "Don Casmurro",
+   "publishers": [
+    "Espasa-Calpe"
+   ],
+   "publish_date": "1955",
+   "number_of_pages": 211,
+   "languages": [
+    {
+     "key": "/languages/spa"
+    }
+   ],
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  },
+  {
+   "key": "/books/OL26595779M",
+   "title": "Dom Casmurro",
+   "publishers": [
+    "ABC"
+   ],
+   "publish_date": "2005",
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  },
+  {
+   "key": "/books/OL6378236M",
+   "title": "Dom Casmurro.",
+   "publishers": [
+    "W. M. Jackson inc."
+   ],
+   "publish_date": "1937",
+   "number_of_pages": 426,
+   "languages": [
+    {
+     "key": "/languages/ita"
+    }
+   ],
+   "works": [
+    {
+     "key": "/works/OL1003040W"
+    }
+   ]
+  }
+ ]
+}

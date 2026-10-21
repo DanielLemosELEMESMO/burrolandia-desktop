@@ -1,9 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Banco, type NovoLivro } from '../../src/main/banco'
-import type { Locator } from '@nucleo/tipos'
+import type { Edicao, Locator, Obra } from '@nucleo/tipos'
 
 const novoLivro = (parcial: Partial<NovoLivro> = {}): NovoLivro => ({
   id: crypto.randomUUID(),
@@ -48,6 +49,7 @@ describe('Banco', () => {
     const novo = novoLivro()
     const livro = banco.inserirLivro(novo)
     expect(livro).toMatchObject({ ...novo, posicao: null, progresso: 0, abertoEm: null })
+    expect(livro).toMatchObject({ obraId: null, edicaoId: null, reconhecimento: 'pendente' })
     expect(banco.obterLivro(novo.id)).toEqual(livro)
   })
 
@@ -100,5 +102,91 @@ describe('Banco', () => {
     banco.salvarPreferencia('leitura', { tema: 'noite', tamanho: 21 })
     banco.salvarPreferencia('leitura', { tema: 'sepia', tamanho: 22 })
     expect(banco.lerPreferencia('leitura')).toEqual({ tema: 'sepia', tamanho: 22 })
+  })
+})
+
+const obra: Obra = {
+  id: 'OL1003040W',
+  titulo: 'Dom Casmurro',
+  autores: ['Machado de Assis'],
+  primeiroAno: 1900,
+  edicoes: 90,
+  capaId: 647501,
+  assuntos: ['Fiction', 'Brazilian fiction'],
+  descricao: null,
+}
+
+const edicao: Edicao = {
+  id: 'OL61241820M',
+  obraId: 'OL1003040W',
+  titulo: 'Dom Casmurro',
+  editoras: ['Penguin-Companhia'],
+  publicadaEm: '16/07/2016',
+  ano: 2016,
+  paginas: 400,
+  idiomas: ['por'],
+  isbn: ['9788582850350'],
+  capaId: 15167286,
+}
+
+describe('Banco: catálogo (etapa 3)', () => {
+  let pasta: string
+  let banco: Banco
+
+  beforeEach(() => {
+    pasta = mkdtempSync(join(tmpdir(), 'burrolandia-banco-'))
+    banco = new Banco(join(pasta, 'burrolandia.db'))
+  })
+
+  afterEach(() => {
+    banco.fechar()
+    rmSync(pasta, { recursive: true, force: true })
+  })
+
+  it('guarda a obra e a edição e liga o livro a elas', () => {
+    const livro = banco.inserirLivro(novoLivro())
+    banco.salvarObra(obra)
+    banco.salvarEdicao(edicao)
+    banco.ligarAoCatalogo(livro.id, { obraId: obra.id, edicaoId: edicao.id, reconhecimento: 'isbn' })
+
+    expect(banco.obterLivro(livro.id)).toMatchObject({ obraId: obra.id, edicaoId: edicao.id, reconhecimento: 'isbn' })
+    expect(banco.obterObra(obra.id)).toEqual(obra)
+    expect(banco.obterEdicao(edicao.id)).toEqual(edicao)
+  })
+
+  it('atualizar a obra sem descrição não apaga a descrição que já tinha', () => {
+    banco.salvarObra({ ...obra, descricao: 'Publicado pela primeira vez em 1899.' })
+    banco.salvarObra({ ...obra, edicoes: 91 })
+    expect(banco.obterObra(obra.id)).toMatchObject({ edicoes: 91, descricao: 'Publicado pela primeira vez em 1899.' })
+  })
+
+  it('lista os livros que ainda não foram procurados no catálogo', () => {
+    const pendente = banco.inserirLivro(novoLivro())
+    const achado = banco.inserirLivro(novoLivro())
+    banco.salvarObra(obra)
+    banco.ligarAoCatalogo(achado.id, { obraId: obra.id, edicaoId: null, reconhecimento: 'titulo' })
+    expect(banco.livrosPendentes()).toEqual([pendente.id])
+  })
+
+  it('um banco da versão anterior ganha o catálogo, com os livros pendentes', () => {
+    banco.fechar()
+    const caminho = join(pasta, 'antigo.db')
+    const antigo = new DatabaseSync(caminho)
+    antigo.exec(`CREATE TABLE livros (
+      id TEXT PRIMARY KEY, titulo TEXT NOT NULL, autores TEXT NOT NULL, idioma TEXT, formato_original TEXT NOT NULL,
+      arquivo_original TEXT NOT NULL, arquivo_leitura TEXT, capa TEXT, hash_sha256 TEXT NOT NULL UNIQUE,
+      tamanho_bytes INTEGER NOT NULL, identificadores TEXT NOT NULL, estado TEXT NOT NULL, posicao TEXT,
+      progresso REAL NOT NULL DEFAULT 0, adicionado_em TEXT NOT NULL, aberto_em TEXT, atualizado_em TEXT NOT NULL);
+    CREATE TABLE preferencias (chave TEXT PRIMARY KEY, valor TEXT NOT NULL, atualizado_em TEXT NOT NULL);
+    INSERT INTO livros VALUES ('00000000-0000-4000-8000-000000000001', 'Iracema', '["José de Alencar"]', 'pt-BR',
+      'epub', 'original.epub', 'original.epub', NULL, 'abc', 10, '{"isbn":[],"outros":[]}', 'pronto', NULL, 0,
+      '2026-10-01T00:00:00.000Z', NULL, '2026-10-01T00:00:00.000Z');
+    PRAGMA user_version = 1;`)
+    antigo.close()
+
+    banco = new Banco(caminho)
+    expect(banco.listarLivros()).toMatchObject([{ titulo: 'Iracema', obraId: null, edicaoId: null, reconhecimento: 'pendente' }])
+    banco.salvarObra(obra)
+    expect(banco.obterObra(obra.id)).toEqual(obra)
   })
 })

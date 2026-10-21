@@ -11,6 +11,7 @@ import { EstadoVazio } from '../componentes/EstadoVazio'
 import { Icone } from '../componentes/Icone'
 import { Assinatura } from '../componentes/Marca'
 import { MenuDeAcoes } from '../componentes/MenuDeAcoes'
+import { SobreLivro } from '../componentes/SobreLivro'
 
 type Vista = 'grade' | 'lista'
 
@@ -87,6 +88,7 @@ export function TelaBiblioteca({
   const [ordem, setOrdem] = useState<Ordem>(() => lembrado('ordem', ORDENS.map(o => o.valor), 'recentes'))
   const [vista, setVista] = useState<Vista>(() => lembrado('vista', ['grade', 'lista'] as const, 'grade'))
   const [removendo, setRemovendo] = useState<Livro | null>(null)
+  const [sobre, setSobre] = useState<string | null>(null)
   const campoDeBusca = useRef<HTMLInputElement>(null)
   const visiveis = organizarLivros(livros, { busca, ordem, formato })
 
@@ -129,7 +131,10 @@ export function TelaBiblioteca({
   const acoes = (livro: Livro) => (
     <MenuDeAcoes
       rotulo={`Mais ações para ${livro.titulo}`}
-      acoes={[{ rotulo: 'Remover da biblioteca', perigosa: true, aoEscolher: () => setRemovendo(livro) }]}
+      acoes={[
+        { rotulo: 'Sobre este livro', aoEscolher: () => setSobre(livro.id) },
+        { rotulo: 'Remover da biblioteca', perigosa: true, aoEscolher: () => setRemovendo(livro) },
+      ]}
     />
   )
 
@@ -276,6 +281,8 @@ export function TelaBiblioteca({
           </>
         )}
       </main>
+
+      <SobreLivro livroId={sobre} aoFechar={() => setSobre(null)} />
 
       <Dialogo aberto={!!removendo} titulo="Remover este livro?" aoFechar={() => setRemovendo(null)} alerta>
         {removendo && (

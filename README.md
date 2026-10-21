@@ -54,18 +54,19 @@ xvfb-run -a npx playwright test --config tests/capturas/playwright.config.ts
 
 ```
 src/
-  nucleo/     lógica sem Electron: tipos, EPUB (ler e escrever), validação, tempo em palavras
+  nucleo/     lógica sem Electron: tipos, EPUB (ler e escrever), PDF, catálogo (Open Library), validação, tempo em palavras
   main/       processo principal: janela, protocolo app://, IPC, banco (SQLite embutido), biblioteca no disco
   preload/    ponte mínima e tipada entre a interface e o processo principal
   renderer/   interface em React; o leitor usa o foliate-js (vendorizado em src/renderer/src/vendor)
 tests/
   unit/       Vitest
   e2e/        Playwright com o app de verdade
-  fixtures/   livros de teste gerados na hora (Machado de Assis, domínio público)
+  fixtures/   livros de teste gerados na hora (Machado de Assis, domínio público) e respostas gravadas do Open Library
 ```
 
 - **Local primeiro**: tudo funciona sem internet e sem conta. A sincronização (Supabase) vem na parte 2.
 - **Formatos portáteis**: todo livro vira EPUB e a posição segue o Locator do Readium, para o app de celular entender a mesma posição.
 - **PDF**: na importação, um processo separado (`src/main/conversor.ts`) converte o PDF num EPUB, o "texto adaptado" (`src/nucleo/pdf`): junta linhas em parágrafos, desfaz a hifenização, tira cabeçalhos e números de página, lê duas colunas na ordem e divide em capítulos pelos marcadores do PDF ou pelos títulos. Cada página do original vira uma marca no EPUB, e assim o leitor alterna entre o texto adaptado e a página original sem perder a página. PDF digitalizado (só imagem) abre na página original.
+- **Obra e edição**: cada livro é reconhecido no Open Library (`src/main/catalogo.ts`, lógica em `src/nucleo/catalogo`): pelo ISBN, a edição exata; senão, a obra pelo título e pelo autor, inclusive traduções. O painel "Sobre este livro" mostra a obra e deixa escolher a edição. Só saem do computador título, autor e ISBN. Sem internet, o livro fica pendente e é procurado na próxima abertura. Nos testes, `BURROLANDIA_SEM_INTERNET=1` desliga o catálogo e `BURROLANDIA_CATALOGO=<url>` aponta para um de mentira.
 
 Os PDFs de teste são gerados pelo próprio Electron (`tests/fixtures/gerar-pdfs.cjs`) e ficam no repositório.

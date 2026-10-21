@@ -1,6 +1,6 @@
 # Parte 1 — Minha biblioteca (desktop)
 
-Data: 20/10/2026 · Estado: etapas 1 e 2 entregues; etapa 3 depende de liberar a rede do ambiente (o Daniel pediu para executar sem rodada de revisão da spec; este documento registra as decisões).
+Data: 20/10/2026 · Estado: etapas 1, 2 e 3 entregues (o Daniel pediu para executar sem rodada de revisão da spec; este documento registra as decisões).
 
 ## 1. Propósito
 
@@ -42,8 +42,8 @@ Entregue em etapas; cada etapa vira um `.exe` para Windows.
 - "Página original": o PDF como foi impresso, sincronizado com a posição do texto adaptado.
 
 **Etapa 3 — Reconhecer obra e edição**
-- Obra → edições → seu arquivo, usando o Open Library (complementado pelo Google Books).
-- Depende de liberar `openlibrary.org` e `covers.openlibrary.org` na rede do ambiente da nuvem para testar aqui.
+- Obra → edições → seu arquivo, usando o Open Library (detalhes na seção 8).
+- O Google Books fica para quando houver uma chave de API: sem chave, a cota diária compartilhada acaba (testado em 20/10, de um IP de nuvem), e o resultado seria imprevisível.
 
 **Fora da parte 1**: conta, sincronização, celular, destaques e notas, leitura em voz alta, estantes personalizadas, metas e lembretes, importação em lote, OCR de PDF escaneado.
 
@@ -91,7 +91,7 @@ livros(
 preferencias(chave TEXT PRIMARY KEY, valor TEXT NOT NULL)  -- JSON por chave
 ```
 
-A etapa 3 acrescenta `obras` e `edicoes` (com ids do Open Library) e `livros.edicao_id`.
+A etapa 3 (migração 2) acrescenta `obras` e `edicoes`, com os ids do Open Library como chave (`OL1003040W`, `OL61241820M`), e em `livros` as colunas `obra_id`, `edicao_id` e `reconhecimento` (começa `pendente`). Na parte 2, essas tabelas viram o catálogo compartilhado do servidor.
 
 Notas para a parte 2 (sincronização):
 - Remover hoje apaga a linha (`DELETE`). Para levar remoções feitas sem internet, a parte 2 troca isso por uma marca (`removido_em`) antes de ligar a sincronização.
@@ -138,18 +138,31 @@ Roda num processo utilitário do Electron (sem travar a janela), com `pdfjs-dist
 
 Limites conhecidos: imagens e tabelas do PDF não entram no texto adaptado (estão na página original); notas de rodapé entram como parágrafos; PDFs com layout muito livre (revistas) podem sair fora de ordem; capítulos muito longos (quando o PDF não tem sumário nem títulos claros) não são divididos, o que deixa a paginação mais lenta e o "falta X neste capítulo" longo.
 
-## 8. Testes e verificação
+## 8. Catálogo: reconhecer obra e edição (etapa 3)
 
-- Unitários (Vitest): metadados de EPUB, banco, Locator, tempo em palavras, conversor PDF→EPUB (com PDFs gerados nos testes).
-- Ponta a ponta (Playwright `_electron`, com xvfb aqui e Windows no CI): adicionar → ler → avançar páginas → fechar → reabrir na mesma posição; temas; remover.
+Roda no processo principal (`src/main/catalogo.ts`), com a lógica em `src/nucleo/catalogo` (testável sem Electron):
+1. **Pelo ISBN**, quando o arquivo tem um (EPUB: metadados; PDF: as 8 primeiras e as 4 últimas páginas, onde ficam os créditos). A busca do Open Library por ISBN devolve a obra e a edição exata.
+2. **Senão, pelo título e pelo autor**, em busca livre. A comparação ignora acentos, artigos (inclusive o invertido dos catálogos: "Origem das Espécies, A") e subtítulos, e vale também para o título da edição que bateu na busca: assim "A Origem das Espécies" é reconhecida como *On the Origin of Species* (a obra original, com 259 edições), não como os registros soltos da tradução. Entre obras que batem igual (o catálogo tem repetidas), fica a com mais edições. "Autores" de metadado de PDF ("Administrator", "user") são ignorados. A edição fica para você escolher.
+3. **Estados** (`livros.reconhecimento`): pendente, isbn, titulo, escolhido, sem-resultado, recusado. Sem conexão, o livro continua pendente e é procurado de novo 4 s depois da próxima abertura do app (a fila para no primeiro sinal de que está sem internet).
+4. **Quando roda**: logo depois de importar (depois da capa do PDF) e na fila dos pendentes; uma requisição por vez, com folga de 300 ms, tempo-limite de 15 s, identificando o app no User-Agent, pela rede do Chromium (respeita o proxy do sistema).
+5. **Privacidade**: do computador só saem título, autor e ISBN; o arquivo, nunca. O painel diz isso.
+6. **Capa**: o livro sem capa ganha a do catálogo (a da edição, ou a da obra); o que tem capa só troca se você pedir, depois de ver a do catálogo.
+7. **Painel "Sobre este livro"** (menu ⋯ na biblioteca): a obra (descrição, assuntos, quantas edições, link para o Open Library), a sua edição, "Escolher a edição" (as do idioma do livro primeiro, depois as com ISBN, das mais novas às mais velhas), "Não é esta obra" (busca à mão) e "Não é nenhuma destas".
+
+Limites conhecidos: o Open Library tem obras repetidas, e o caminho do ISBN pode cair numa delas (é a obra que o catálogo dá para aquela edição); ISBNs de livros brasileiros recentes muitas vezes não estão lá (a obra costuma estar, e o título acha); os assuntos vêm em inglês; quando o catálogo junta obras repetidas, o id guardado pode virar redirecionamento (tratar quando a parte 2 renovar os dados).
+
+## 9. Testes e verificação
+
+- Unitários (Vitest): metadados de EPUB, banco, Locator, tempo em palavras, conversor PDF→EPUB (com PDFs gerados nos testes), catálogo (com respostas reais do Open Library gravadas em `tests/fixtures/openlibrary`).
+- Ponta a ponta (Playwright `_electron`, com xvfb aqui e Windows no CI): adicionar → ler → avançar páginas → fechar → reabrir na mesma posição; temas; remover; catálogo contra um Open Library de mentira (servidor local). Os demais testes rodam sem internet (`BURROLANDIA_SEM_INTERNET`).
 - Capturas de tela de cada tela para o Daniel acompanhar.
 
-## 9. Build e distribuição
+## 10. Build e distribuição
 
 - GitHub Actions em `windows-latest` a cada push: testes, `electron-builder` (instalador NSIS e `.exe` portátil), artefatos do run e pré-release `dev` com link fixo.
 - Sem assinatura de código por enquanto: o Windows mostra "O Windows protegeu o computador" → "Mais informações" → "Executar assim mesmo".
 
-## 10. Identidade visual
+## 11. Identidade visual
 
 A marca vem do kit do Daniel (docs/marca: manual, tokens e referências). Decisões de implementação:
 
@@ -161,7 +174,7 @@ A marca vem do kit do Daniel (docs/marca: manual, tokens e referências). Decis�
 - **Burro:** desenhado em SVG a partir das referências (cabeça creme, coroa de ouro, pálpebras a meio mastro). Aparece no ícone do app, no sucesso da importação e, de óculos escuros, na biblioteca vazia. Humor só fora da leitura: saudação, estado vazio, importação.
 - **A decidir (produto):** Ferramentas/Transformar (resumo e reescrita por IA, sempre rotulados), Drive e sincronização, coleções, preços e cotas (não aparecem na interface), versão final vetorial da marca por designer.
 
-## 11. Vocabulário
+## 12. Vocabulário
 
 Um conceito, um nome, igual no código, na interface e na conversa.
 
@@ -171,6 +184,8 @@ Um conceito, um nome, igual no código, na interface e na conversa.
 | livro | o seu exemplar: o arquivo que você trouxe, com a posição e o progresso |
 | obra | o livro como criação (A Origem das Espécies), acima das edições (etapa 3) |
 | edição | uma publicação específica de uma obra (etapa 3) |
+| catálogo | o Open Library, de onde vêm as obras e as edições |
+| reconhecer | ligar o seu livro à obra (e, se der, à edição) do catálogo |
 | continuar lendo | o livro aberto mais recentemente e ainda não terminado |
 | texto adaptado | o EPUB gerado a partir de um PDF |
 | página original | o PDF como foi impresso |

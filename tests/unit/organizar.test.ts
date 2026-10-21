@@ -21,6 +21,9 @@ const livro = (parcial: Partial<Livro> = {}): Livro => ({
   adicionadoEm: '2026-10-01T10:00:00.000Z',
   abertoEm: null,
   atualizadoEm: '2026-10-01T10:00:00.000Z',
+  obraId: null,
+  edicaoId: null,
+  reconhecimento: 'pendente',
   ...parcial,
 })
 

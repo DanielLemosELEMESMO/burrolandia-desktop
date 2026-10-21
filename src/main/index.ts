@@ -1,10 +1,12 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, shell } from 'electron'
+import { app, BrowserWindow, dialog, Menu, nativeTheme, net, screen, shell } from 'electron'
+import { ClienteOpenLibrary, ENDERECOS_DO_OPEN_LIBRARY } from '@nucleo/catalogo/cliente'
 import { MARCA, TEMAS } from '@nucleo/cores'
 import type { Preferencias } from '@nucleo/tipos'
 import { Banco } from './banco'
 import { Biblioteca } from './biblioteca'
+import { Catalogo } from './catalogo'
 import { converterEmProcessoSeparado } from './conversorPdf'
 import { lerPreferencias, lerSessao, registrarIpc } from './ipc'
 import { ORIGEM, caminhoDaInterface, registrarEsquema, tratarProtocolo, urlDaInterface } from './protocolo'
@@ -41,6 +43,23 @@ function recursosDoPdfjs(pastaInterface: string) {
   const pasta = existsSync(empacotados) ? empacotados : join(app.getAppPath(), 'src/renderer/public/pdfjs')
   return { pastaDeCmaps: join(pasta, 'cmaps'), pastaDeFontes: join(pasta, 'standard_fonts') }
 }
+
+/**
+ * O cliente do catálogo, pela rede do Chromium (respeita o proxy do sistema). Nos testes,
+ * BURROLANDIA_SEM_INTERNET desliga o catálogo e BURROLANDIA_CATALOGO aponta para um de mentira.
+ */
+function clienteDoCatalogo(): ClienteOpenLibrary | null {
+  if (process.env.BURROLANDIA_SEM_INTERNET) return null
+  const falso = process.env.BURROLANDIA_CATALOGO
+  return new ClienteOpenLibrary(
+    (url, init) => net.fetch(url, init),
+    falso ? { openLibrary: falso, capas: falso } : ENDERECOS_DO_OPEN_LIBRARY,
+    falso ? 0 : 300,
+  )
+}
+
+// Os livros ainda não procurados no catálogo são procurados um pouco depois de abrir, sem atrapalhar.
+const ESPERA_PARA_RECONHECER = 4000
 
 /** Só reaproveita a posição antiga se ela ainda cabe numa tela conectada. */
 function estadoValido(estado: EstadoDaJanela | undefined): EstadoDaJanela {
@@ -133,13 +152,17 @@ if (!app.requestSingleInstanceLock()) {
     )
     const bancoAberto = banco
     void biblioteca.limparPastasOrfas()
+    const catalogo = new Catalogo(banco, biblioteca, clienteDoCatalogo(), livroId => {
+      for (const janela of BrowserWindow.getAllWindows()) janela.webContents.send('catalogo:mudou', livroId)
+    })
 
     tratarProtocolo(biblioteca, pastaInterface)
-    registrarIpc(banco, biblioteca, () => {
+    registrarIpc(banco, biblioteca, catalogo, () => {
       const { fundo } = aparencia(bancoAberto, biblioteca)
       for (const janela of BrowserWindow.getAllWindows()) janela.setBackgroundColor(fundo)
     })
     criarJanela(banco, biblioteca)
+    setTimeout(() => void catalogo.reconhecerPendentes(), ESPERA_PARA_RECONHECER)
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) criarJanela(bancoAberto, biblioteca)

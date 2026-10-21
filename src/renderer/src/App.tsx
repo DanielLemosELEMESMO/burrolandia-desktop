@@ -82,6 +82,19 @@ export function App() {
   const recarregar = useCallback(async () => setLivros(await api.biblioteca.listar()), [])
   const importacao = useImportacao(recarregar)
 
+  // Quando o catálogo reconhece um livro (ou troca a capa), a lista se atualiza; vários avisos juntos viram um.
+  useEffect(() => {
+    let espera: number | undefined
+    const parar = api.catalogo.aoMudar(() => {
+      window.clearTimeout(espera)
+      espera = window.setTimeout(() => void recarregar(), 300)
+    })
+    return () => {
+      parar()
+      window.clearTimeout(espera)
+    }
+  }, [recarregar])
+
   // Ao abrir: se você fechou o app dentro de um livro, ele reabre dentro do livro.
   useEffect(() => {
     void (async () => {

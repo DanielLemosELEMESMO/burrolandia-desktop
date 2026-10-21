@@ -6,6 +6,7 @@ import { copyFileSync, mkdirSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { gravarLivrosDeTeste } from '../fixtures/livros'
 import { abrirApp, escolherArquivo, irPara, novaPastaDeDados } from '../e2e/app'
+import { abrirCatalogoFalso } from '../e2e/catalogo-falso'
 
 const destino = process.env.CAPTURAS ?? join(__dirname, '../../test-results/capturas')
 
@@ -22,7 +23,8 @@ test('capturas das telas', async () => {
   const livros = gravarLivrosDeTeste(join(dados, 'origem'))
   const pdf = join(dados, 'origem', 'notas-duas-colunas.pdf')
   copyFileSync(join(__dirname, '../fixtures/pdf/notas-duas-colunas.pdf'), pdf)
-  const { app, janela } = await abrirApp(dados)
+  const catalogo = await abrirCatalogoFalso()
+  const { app, janela } = await abrirApp(dados, { catalogo: catalogo.url })
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1280, 820))
   const foto = (nome: string) => janela.screenshot({ path: join(destino, `${nome}.png`) })
 
@@ -103,5 +105,25 @@ test('capturas das telas', async () => {
   await janela.getByRole('button', { name: 'Recolher a navegação' }).click()
   await janela.waitForTimeout(300)
   await foto('13-dock-recolhido')
+  await janela.getByRole('button', { name: 'Mostrar a navegação' }).click()
+
+  // Etapa 3: o catálogo.
+  await janela.getByRole('button', { name: 'Mais ações para Dom Casmurro' }).click()
+  await janela.getByRole('menuitem', { name: 'Sobre este livro' }).click()
+  const sobre = janela.getByRole('dialog', { name: 'Sobre este livro' })
+  await expect(sobre.getByRole('region', { name: 'A obra' })).toContainText('90 edições')
+  await janela.waitForTimeout(500)
+  await foto('14-sobre-o-livro')
+  await sobre.getByRole('button', { name: 'Escolher a edição' }).click()
+  await expect(sobre.getByRole('list', { name: 'Edições' })).toBeVisible()
+  await janela.waitForTimeout(300)
+  await foto('15-escolher-a-edicao')
+  await sobre.getByRole('list', { name: 'Edições' }).getByRole('button', { name: /9788582850350/ }).click()
+  await expect(sobre.getByRole('region', { name: 'Sua edição' })).toContainText('Penguin-Companhia')
+  await sobre.locator('.sobre-capa img').waitFor()
+  await sobre.evaluate(painel => painel.scrollTo(0, painel.scrollHeight))
+  await janela.waitForTimeout(400)
+  await foto('16-sua-edicao')
   await app.close()
+  await catalogo.fechar()
 })

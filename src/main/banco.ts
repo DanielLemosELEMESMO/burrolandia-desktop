@@ -2,9 +2,13 @@
 // Supabase na parte 2: ids UUID, datas ISO e atualizado_em em toda linha.
 
 import { DatabaseSync } from 'node:sqlite'
-import type { Identificadores, Livro, Locator } from '@nucleo/tipos'
+import type { Edicao, Identificadores, Livro, Locator, Obra, Reconhecimento } from '@nucleo/tipos'
 
-export type NovoLivro = Omit<Livro, 'posicao' | 'progresso' | 'abertoEm' | 'atualizadoEm'>
+/** Um livro recém-importado: sem posição, sem progresso e ainda não procurado no catálogo. */
+export type NovoLivro = Omit<
+  Livro,
+  'posicao' | 'progresso' | 'abertoEm' | 'atualizadoEm' | 'obraId' | 'edicaoId' | 'reconhecimento'
+>
 
 type Linha = Record<string, string | number | null>
 
@@ -33,6 +37,34 @@ const MIGRACOES = [
     valor TEXT NOT NULL,
     atualizado_em TEXT NOT NULL
   );`,
+  // Etapa 3: o catálogo. Obras e edições com os ids do Open Library; o livro aponta para elas.
+  `CREATE TABLE obras (
+    id TEXT PRIMARY KEY,
+    titulo TEXT NOT NULL,
+    autores TEXT NOT NULL,
+    primeiro_ano INTEGER,
+    edicoes INTEGER NOT NULL DEFAULT 0,
+    capa_id INTEGER,
+    assuntos TEXT NOT NULL,
+    descricao TEXT,
+    atualizado_em TEXT NOT NULL
+  );
+  CREATE TABLE edicoes (
+    id TEXT PRIMARY KEY,
+    obra_id TEXT NOT NULL,
+    titulo TEXT NOT NULL,
+    editoras TEXT NOT NULL,
+    publicada_em TEXT,
+    ano INTEGER,
+    paginas INTEGER,
+    idiomas TEXT NOT NULL,
+    isbn TEXT NOT NULL,
+    capa_id INTEGER,
+    atualizado_em TEXT NOT NULL
+  );
+  ALTER TABLE livros ADD COLUMN obra_id TEXT;
+  ALTER TABLE livros ADD COLUMN edicao_id TEXT;
+  ALTER TABLE livros ADD COLUMN reconhecimento TEXT NOT NULL DEFAULT 'pendente';`,
 ]
 
 const paraLivro = (l: Linha): Livro => ({
@@ -53,6 +85,33 @@ const paraLivro = (l: Linha): Livro => ({
   adicionadoEm: l.adicionado_em as string,
   abertoEm: l.aberto_em as string | null,
   atualizadoEm: l.atualizado_em as string,
+  obraId: l.obra_id as string | null,
+  edicaoId: l.edicao_id as string | null,
+  reconhecimento: l.reconhecimento as Reconhecimento,
+})
+
+const paraObra = (l: Linha): Obra => ({
+  id: l.id as string,
+  titulo: l.titulo as string,
+  autores: JSON.parse(l.autores as string) as string[],
+  primeiroAno: l.primeiro_ano as number | null,
+  edicoes: l.edicoes as number,
+  capaId: l.capa_id as number | null,
+  assuntos: JSON.parse(l.assuntos as string) as string[],
+  descricao: l.descricao as string | null,
+})
+
+const paraEdicao = (l: Linha): Edicao => ({
+  id: l.id as string,
+  obraId: l.obra_id as string,
+  titulo: l.titulo as string,
+  editoras: JSON.parse(l.editoras as string) as string[],
+  publicadaEm: l.publicada_em as string | null,
+  ano: l.ano as number | null,
+  paginas: l.paginas as number | null,
+  idiomas: JSON.parse(l.idiomas as string) as string[],
+  isbn: JSON.parse(l.isbn as string) as string[],
+  capaId: l.capa_id as number | null,
 })
 
 export class Banco {
@@ -159,6 +218,82 @@ export class Banco {
 
   removerLivro(id: string) {
     this.#db.prepare('DELETE FROM livros WHERE id = ?').run(id)
+  }
+
+  /** Guarda (ou atualiza) uma obra. Uma descrição nula não apaga a que já estava guardada. */
+  salvarObra(obra: Obra) {
+    this.#db
+      .prepare(
+        `INSERT INTO obras (id, titulo, autores, primeiro_ano, edicoes, capa_id, assuntos, descricao, atualizado_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET titulo = excluded.titulo, autores = excluded.autores,
+           primeiro_ano = excluded.primeiro_ano, edicoes = excluded.edicoes, capa_id = excluded.capa_id,
+           assuntos = excluded.assuntos, descricao = COALESCE(excluded.descricao, obras.descricao),
+           atualizado_em = excluded.atualizado_em`,
+      )
+      .run(
+        obra.id,
+        obra.titulo,
+        JSON.stringify(obra.autores),
+        obra.primeiroAno,
+        obra.edicoes,
+        obra.capaId,
+        JSON.stringify(obra.assuntos),
+        obra.descricao,
+        new Date().toISOString(),
+      )
+  }
+
+  salvarEdicao(edicao: Edicao) {
+    this.#db
+      .prepare(
+        `INSERT INTO edicoes (id, obra_id, titulo, editoras, publicada_em, ano, paginas, idiomas, isbn, capa_id, atualizado_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET obra_id = excluded.obra_id, titulo = excluded.titulo,
+           editoras = excluded.editoras, publicada_em = excluded.publicada_em, ano = excluded.ano,
+           paginas = excluded.paginas, idiomas = excluded.idiomas, isbn = excluded.isbn,
+           capa_id = excluded.capa_id, atualizado_em = excluded.atualizado_em`,
+      )
+      .run(
+        edicao.id,
+        edicao.obraId,
+        edicao.titulo,
+        JSON.stringify(edicao.editoras),
+        edicao.publicadaEm,
+        edicao.ano,
+        edicao.paginas,
+        JSON.stringify(edicao.idiomas),
+        JSON.stringify(edicao.isbn),
+        edicao.capaId,
+        new Date().toISOString(),
+      )
+  }
+
+  obterObra(id: string): Obra | null {
+    const linha = this.#db.prepare('SELECT * FROM obras WHERE id = ?').get(id) as Linha | undefined
+    return linha ? paraObra(linha) : null
+  }
+
+  obterEdicao(id: string): Edicao | null {
+    const linha = this.#db.prepare('SELECT * FROM edicoes WHERE id = ?').get(id) as Linha | undefined
+    return linha ? paraEdicao(linha) : null
+  }
+
+  ligarAoCatalogo(
+    livroId: string,
+    { obraId, edicaoId, reconhecimento }: { obraId: string | null; edicaoId: string | null; reconhecimento: Reconhecimento },
+  ) {
+    this.#db
+      .prepare('UPDATE livros SET obra_id = ?, edicao_id = ?, reconhecimento = ?, atualizado_em = ? WHERE id = ?')
+      .run(obraId, edicaoId, reconhecimento, new Date().toISOString(), livroId)
+  }
+
+  /** Os livros que ainda não foram procurados no catálogo (ou que estavam sem internet). */
+  livrosPendentes(): string[] {
+    const linhas = this.#db
+      .prepare("SELECT id FROM livros WHERE reconhecimento = 'pendente' ORDER BY adicionado_em")
+      .all() as { id: string }[]
+    return linhas.map(l => l.id)
   }
 
   lerPreferencia<T>(chave: string): T | undefined {

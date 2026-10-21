@@ -3,6 +3,7 @@
 
 import { strFromU8, unzipSync } from 'fflate'
 import { DOMParser, type Document, type Element } from '@xmldom/xmldom'
+import { isbnValido } from '../catalogo/isbn'
 import { extensaoDaImagem } from './comum'
 
 export type CodigoErroEpub = 'arquivo-invalido' | 'drm'
@@ -83,18 +84,6 @@ function resolverCaminho(base: string, href: string) {
     else if (parte && parte !== '.') partes.push(parte)
   }
   return partes.join('/')
-}
-
-function isbnValido(digitos: string) {
-  if (/^97[89]\d{10}$/.test(digitos)) {
-    const soma = [...digitos].reduce((s, d, i) => s + Number(d) * (i % 2 ? 3 : 1), 0)
-    return soma % 10 === 0
-  }
-  if (/^\d{9}[\dX]$/.test(digitos)) {
-    const soma = [...digitos].reduce((s, d, i) => s + (d === 'X' ? 10 : Number(d)) * (10 - i), 0)
-    return soma % 11 === 0
-  }
-  return false
 }
 
 function separarIdentificadores(elementos: Element[]) {

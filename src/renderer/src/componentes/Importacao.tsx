@@ -60,6 +60,8 @@ export function useImportacao(aoMudarBiblioteca: () => void) {
         importando.current = false
         aoMudarBiblioteca()
         setEstado({ fase: 'fim', livro, aviso: aviso.current })
+        // Depois da capa (a do PDF vem da primeira página), procura a obra no catálogo, sem esperar.
+        void api.catalogo.reconhecer(livro.id).catch(() => {})
         return
       }
       importando.current = false

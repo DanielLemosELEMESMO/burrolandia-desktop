@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { strFromU8, unzipSync } from 'fflate'
-import { converterPdfEmEpub } from '@nucleo/pdf/converter'
+import { converterPdfEmEpub, isbnsDasPaginas } from '@nucleo/pdf/converter'
+import type { PaginaPdf } from '@nucleo/pdf/tipos'
 import { lerEpub } from '@nucleo/epub/ler'
 
 const fixture = (nome: string) => new Uint8Array(readFileSync(join(__dirname, '../fixtures/pdf', nome)))
@@ -86,5 +87,27 @@ describe('converterPdfEmEpub', () => {
     const recursos = { pastaDeCmaps: join(pdfjs, 'cmaps') + '\\', pastaDeFontes: join(pdfjs, 'standard_fonts') + '\\' }
     const r = await converterPdfEmEpub(fixture('dom-casmurro-uma-coluna.pdf'), { ...opcoes, recursos })
     expect(r).toMatchObject({ temTexto: true, titulo: 'Dom Casmurro' })
+  })
+})
+
+describe('isbnsDasPaginas', () => {
+  const pagina = (numero: number, ...linhas: string[]): PaginaPdf => ({
+    numero,
+    rotulo: String(numero),
+    largura: 400,
+    altura: 600,
+    itens: linhas.map((texto, i) => ({ texto, x: 40, y: 560 - i * 20, largura: 300, altura: 12 })),
+  })
+
+  it('acha o ISBN na página de créditos, mesmo partido em pedaços', () => {
+    const paginas = [pagina(1, 'Dom Casmurro'), pagina(2, 'Copyright © 2019', 'ISBN 978-85-', '08-14560-7'), pagina(3, 'I. Do título')]
+    expect(isbnsDasPaginas(paginas)).toEqual(['9788508145607'])
+  })
+
+  it('olha só o começo e o fim do livro, onde ficam os créditos', () => {
+    const miolo = Array.from({ length: 30 }, (_, i) => pagina(i + 1, 'Texto do capítulo'))
+    miolo[15] = pagina(16, 'Uma citação com ISBN 978-85-08-14560-7 no meio do livro')
+    miolo[28] = pagina(29, 'ISBN 978-0-306-40615-7')
+    expect(isbnsDasPaginas(miolo)).toEqual(['9780306406157'])
   })
 })

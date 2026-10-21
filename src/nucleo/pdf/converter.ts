@@ -1,10 +1,12 @@
 // PDF → EPUB: o "texto adaptado". Roda uma vez, na importação.
 
+import { encontrarIsbns } from '../catalogo/isbn'
 import { escaparXml } from '../epub/comum'
 import { escreverEpub, type CapituloEpub, type PaginaEpub } from '../epub/escrever'
 import { estruturar, type Capitulo, type MarcaDePagina } from './estruturar'
 import { extrairPdf, type OpcoesDeExtracao } from './extrair'
 import { detectarIdioma, normalizarIdioma } from './idioma'
+import type { PaginaPdf } from './tipos'
 
 export interface ResultadoConversao {
   /** false quando o PDF é só imagem (digitalizado): fica só a página original. */
@@ -15,6 +17,8 @@ export interface ResultadoConversao {
   idioma: string | null
   paginas: number
   paginasSemTexto: number
+  /** Os ISBNs da página de créditos, para reconhecer a edição no catálogo. */
+  isbn: string[]
 }
 
 export interface OpcoesDeConversao extends OpcoesDeExtracao {
@@ -57,6 +61,16 @@ function paraXhtml(capitulos: Capitulo[]) {
   return { capitulos: epub, paginas }
 }
 
+// Os créditos (com o ISBN) ficam no começo do livro, às vezes no fim; no miolo, um ISBN é citação.
+const PAGINAS_DO_COMECO = 8
+const PAGINAS_DO_FIM = 4
+
+/** Os ISBNs das páginas de créditos: as primeiras e as últimas do PDF. */
+export function isbnsDasPaginas(paginas: PaginaPdf[]): string[] {
+  const creditos = new Set([...paginas.slice(0, PAGINAS_DO_COMECO), ...paginas.slice(-PAGINAS_DO_FIM)])
+  return [...new Set([...creditos].flatMap(p => encontrarIsbns(p.itens.map(i => i.texto).join(' '))))]
+}
+
 export async function converterPdfEmEpub(bytes: Uint8Array, opcoes: OpcoesDeConversao): Promise<ResultadoConversao> {
   const doc = await extrairPdf(bytes, opcoes)
   const autores = separarAutores(doc.autor)
@@ -72,6 +86,7 @@ export async function converterPdfEmEpub(bytes: Uint8Array, opcoes: OpcoesDeConv
       idioma: normalizarIdioma(doc.idioma),
       paginas: doc.paginas.length,
       paginasSemTexto: doc.paginas.length,
+      isbn: isbnsDasPaginas(doc.paginas),
     }
   }
 
@@ -101,5 +116,6 @@ export async function converterPdfEmEpub(bytes: Uint8Array, opcoes: OpcoesDeConv
     idioma,
     paginas: doc.paginas.length,
     paginasSemTexto: estruturado.paginasSemTexto.length,
+    isbn: isbnsDasPaginas(doc.paginas),
   }
 }
