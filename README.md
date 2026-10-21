@@ -8,7 +8,7 @@ O projeto segue as três forças herdadas da IRVV:
 - **Rotina**: ler cabe no dia a dia, e voltar ao livro não custa nada.
 - **Acessibilidade**: qualquer pessoa lê com conforto, sem ajuda, do início ao fim.
 
-As decisões estão na spec: [`docs/superpowers/specs/2026-10-20-minha-biblioteca-design.md`](docs/superpowers/specs/2026-10-20-minha-biblioteca-design.md).
+As decisões estão nas specs: [a biblioteca](docs/superpowers/specs/2026-10-20-minha-biblioteca-design.md) e [a conta e a nuvem](docs/superpowers/specs/2026-10-21-conta-e-nuvem-design.md).
 
 ## Testar no seu computador (Windows)
 
@@ -43,6 +43,13 @@ npx electron-builder --linux dir --publish never
 BURROLANDIA_EXECUTAVEL=$PWD/release/linux-unpacked/burrolandia-desktop xvfb-run -a npx playwright test
 ```
 
+A nuvem: os testes de ponta a ponta usam um Supabase de mentira (ou a nuvem desligada). O contrato contra o Supabase de verdade roda só quando pedido, com o token pessoal do painel do Supabase (que nunca entra no repositório):
+
+```bash
+SUPABASE_REF=<id do projeto> SUPABASE_TOKEN=<token> BURROLANDIA_NUVEM_AO_VIVO=1 npx vitest run tests/unit/nuvem-contrato.test.ts
+SUPABASE_REF=<id do projeto> SUPABASE_TOKEN=<token> node scripts/supabase-migrar.mjs   # aplica as migrações de supabase/migrations
+```
+
 Capturas das telas principais:
 
 ```bash
@@ -54,8 +61,9 @@ xvfb-run -a npx playwright test --config tests/capturas/playwright.config.ts
 
 ```
 src/
-  nucleo/     lógica sem Electron: tipos, EPUB (ler e escrever), PDF, catálogo (Open Library), validação, tempo em palavras
-  main/       processo principal: janela, protocolo app://, IPC, banco (SQLite embutido), biblioteca no disco
+  nucleo/     lógica sem Electron: tipos, EPUB (ler e escrever), PDF, catálogo (Open Library), nuvem (regras de conflito), validação, tempo em palavras
+  main/       processo principal: janela, protocolo app://, IPC, banco (SQLite embutido), biblioteca no disco, sincronização e Supabase
+supabase/     migrações do banco na nuvem (tabela, RLS, funções, buckets)
   preload/    ponte mínima e tipada entre a interface e o processo principal
   renderer/   interface em React; o leitor usa o foliate-js (vendorizado em src/renderer/src/vendor)
 tests/
@@ -64,7 +72,7 @@ tests/
   fixtures/   livros de teste gerados na hora (Machado de Assis, domínio público) e respostas gravadas do Open Library
 ```
 
-- **Local primeiro**: tudo funciona sem internet e sem conta. A sincronização (Supabase) vem na parte 2.
+- **Local primeiro**: tudo funciona sem internet e sem conta. Com a conta (parte 2, Supabase), os livros, as capas, a obra e a página onde você parou vão para os outros aparelhos; os arquivos (até 50 MB) ficam numa pasta privada da conta. Cada livro é o hash do arquivo, e os conflitos se resolvem campo a campo (a posição mais recente vence). Ver `src/main/nuvem.ts`, `src/nucleo/nuvem` e `supabase/migrations`. Nos testes, `BURROLANDIA_NUVEM=desligada` (o padrão dos testes) ou o endereço de um Supabase de mentira.
 - **Formatos portáteis**: todo livro vira EPUB e a posição segue o Locator do Readium, para o app de celular entender a mesma posição.
 - **PDF**: na importação, um processo separado (`src/main/conversor.ts`) converte o PDF num EPUB, o "texto adaptado" (`src/nucleo/pdf`): junta linhas em parágrafos, desfaz a hifenização, tira cabeçalhos e números de página, lê duas colunas na ordem e divide em capítulos pelos marcadores do PDF ou pelos títulos. Cada página do original vira uma marca no EPUB, e assim o leitor alterna entre o texto adaptado e a página original sem perder a página. PDF digitalizado (só imagem) abre na página original.
 - **Obra e edição**: cada livro é reconhecido no Open Library (`src/main/catalogo.ts`, lógica em `src/nucleo/catalogo`): pelo ISBN, a edição exata (se o título ou o autor conferem); senão, a obra pelo título e pelo autor, inclusive traduções e volumes de série. Na dúvida, não escolhe: livro sem autor não é procurado pelo título. O painel "Sobre este livro" mostra a obra e deixa escolher a edição. Só saem do computador título, autor e ISBN, no máximo uma requisição por segundo. Sem internet, o livro fica pendente e é procurado na próxima abertura. Nos testes, `BURROLANDIA_SEM_INTERNET=1` desliga o catálogo e `BURROLANDIA_CATALOGO=<url>` aponta para um de mentira.

@@ -155,7 +155,7 @@ Roda no processo principal (`src/main/catalogo.ts`), com a lógica em `src/nucle
 
 Limites conhecidos: o Open Library tem obras repetidas, e o caminho do ISBN pode cair numa delas (é a obra que o catálogo dá para aquela edição); ISBNs de livros brasileiros recentes muitas vezes não estão lá (a obra costuma estar, e o título acha); volume de série cujo título o catálogo não tem fica sem obra ("Diário de um Banana: Rodrick é o Cara"), para a pessoa procurar; os assuntos vêm em inglês; quando o catálogo junta obras repetidas, o id guardado pode virar redirecionamento (tratar quando a parte 2 renovar os dados).
 
-Em aberto (decisão do Daniel): se a busca no catálogo deve ser automática como hoje (os livros já importados também entram na fila depois da atualização), pedir permissão uma vez, ou ter um interruptor nos ajustes; e se o app deve deixar um contato no User-Agent (com contato, o Open Library aceita até três requisições por segundo).
+Decidido pelo Daniel (21/10): a busca no catálogo continua automática (os livros já importados também entram na fila), e o app não deixa contato no User-Agent por enquanto (fica no limite de uma requisição por segundo; com contato, seriam até três).
 
 ## 9. Testes e verificação
 
